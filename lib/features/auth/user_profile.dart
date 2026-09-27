@@ -1,4 +1,9 @@
 /// The three system roles, mirroring the `user_role` enum in the database.
+///
+/// Display names live in [LocalizedUserRole] rather than here. An enum cannot
+/// reach the localisation delegates without a `BuildContext`, and hard-coding
+/// English strings on a domain type is how an Arabic app ends up with English
+/// leaking out of it in exactly one place.
 enum UserRole {
   client,
   inspector,
@@ -8,12 +13,6 @@ enum UserRole {
     (UserRole role) => role.name == value,
     orElse: () => UserRole.client,
   );
-
-  String get label => switch (this) {
-    UserRole.client => 'Car buyer',
-    UserRole.inspector => 'Inspector',
-    UserRole.admin => 'Administrator',
-  };
 }
 
 /// A row of `public.users`.

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moaen/app.dart';
 import 'package:moaen/core/env.dart';
+import 'package:moaen/core/localization/locale_provider.dart';
 import 'package:moaen/features/auth/auth_controller.dart';
 import 'package:moaen/features/auth/auth_repository.dart';
 import 'package:moaen/features/auth/sign_in_page.dart';
@@ -71,8 +72,19 @@ UserProfile _profile({
   locationCity: city,
 );
 
+/// Renders the real [MoaenApp] in English.
+///
+/// These tests cover the routing guard and form validation, not translation, so
+/// they assert against English finders. The app's own default is Arabic (D7),
+/// overridden here so a wording change in `app_ar.arb` cannot break a test about
+/// whether a session lands on the right screen. The Arabic and RTL behaviour
+/// that the override would otherwise hide is covered in
+/// `test/core/localization_test.dart`.
 Widget _app(FakeAuthRepository repository) => ProviderScope(
-  overrides: [authRepositoryProvider.overrideWithValue(repository)],
+  overrides: [
+    authRepositoryProvider.overrideWithValue(repository),
+    localeProvider.overrideWithValue(const Locale('en')),
+  ],
   child: const MoaenApp(),
 );
 

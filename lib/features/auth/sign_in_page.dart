@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/env.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/theme/app_theme.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../shared/utils/validators.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_repository.dart';
 import '../auth/user_profile.dart';
+import '../auth/user_role_localizations.dart';
 
 /// Sign in, or create an account.
 ///
@@ -79,20 +82,26 @@ class _SignInPageState extends ConsumerState<SignInPage> {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AsyncValue<UserProfile?> auth = ref.watch(authControllerProvider);
     final bool busy = auth.isLoading;
     final Object? authError = auth.error;
     final String? failure = switch (authError) {
       null => null,
       final AuthFailure authFailure => authFailure.message,
-      final Object _ => 'Something went wrong. Please try again.',
+      // Deliberately not the raw error: an AuthException can carry a Supabase
+      // message written for developers. The detail goes to the log instead.
+      final Object _ => l10n.errorGeneric,
     };
 
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xl,
+              vertical: AppSpacing.xxl,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Form(
@@ -105,73 +114,76 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     Text(
                       _registering
-                          ? 'Create an account to request or provide an inspection.'
-                          : 'Sign in to continue.',
+                          ? l10n.authRegisterSubtitle
+                          : l10n.authSignInSubtitle,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: AppSpacing.xxl),
 
                     if (_registering) ...<Widget>[
                       TextFormField(
                         controller: _fullName,
                         textInputAction: TextInputAction.next,
                         textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Full name',
-                          border: OutlineInputBorder(),
+                        textDirection: TextDirection.rtl,
+                        decoration: InputDecoration(
+                          labelText: l10n.fieldFullName,
                         ),
                         validator: Validators.fullName,
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.lg),
                       SegmentedButton<UserRole>(
-                        segments: const <ButtonSegment<UserRole>>[
+                        segments: <ButtonSegment<UserRole>>[
                           ButtonSegment<UserRole>(
                             value: UserRole.client,
-                            label: Text('I am buying'),
-                            icon: Icon(Icons.directions_car_outlined),
+                            label: Text(
+                              UserRole.client.localizedPrompt(context),
+                            ),
+                            icon: const Icon(Icons.directions_car_outlined),
                           ),
                           ButtonSegment<UserRole>(
                             value: UserRole.inspector,
-                            label: Text('I inspect'),
-                            icon: Icon(Icons.fact_check_outlined),
+                            label: Text(
+                              UserRole.inspector.localizedPrompt(context),
+                            ),
+                            icon: const Icon(Icons.fact_check_outlined),
                           ),
                         ],
                         selected: <UserRole>{_role},
+                        showSelectedIcon: false,
                         onSelectionChanged: (Set<UserRole> selection) =>
                             setState(() => _role = selection.first),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.lg),
                       TextFormField(
                         controller: _phone,
                         keyboardType: TextInputType.phone,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'Phone (optional)',
-                          helperText: 'Used to contact you about an inspection.',
-                          border: OutlineInputBorder(),
+                        textDirection: TextDirection.ltr,
+                        decoration: InputDecoration(
+                          labelText: l10n.fieldPhoneOptional,
+                          helperText: l10n.helperPhone,
                         ),
                         validator: Validators.phone,
                       ),
                       if (_role == UserRole.inspector) ...<Widget>[
-                        const SizedBox(height: 16),
+                        const SizedBox(height: AppSpacing.lg),
                         TextFormField(
                           controller: _city,
                           textInputAction: TextInputAction.next,
                           textCapitalization: TextCapitalization.words,
-                          decoration: const InputDecoration(
-                            labelText: 'Service city',
-                            helperText:
-                                'You will see inspection requests from this city only.',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: l10n.fieldServiceCity,
+                            helperText: l10n.helperServiceCity,
                           ),
                           validator: Validators.city,
                         ),
                       ],
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.lg),
                     ],
 
                     TextFormField(
@@ -179,13 +191,15 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       autofillHints: const <String>[AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
+                      // Email and phone are LTR even in an Arabic layout:
+                      // bidi reordering mangles a mixed address or number, and
+                      // the caret jumping mid-string is worse than the field
+                      // technically reading right-to-left.
+                      textDirection: TextDirection.ltr,
+                      decoration: InputDecoration(labelText: l10n.fieldEmail),
                       validator: Validators.email,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _password,
                       obscureText: _obscurePassword,
@@ -193,31 +207,35 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       autofillHints: const <String>[AutofillHints.password],
                       onFieldSubmitted: (_) => busy ? null : _submit(),
                       decoration: InputDecoration(
-                        labelText: 'Password',
+                        labelText: l10n.fieldPassword,
                         helperText: _registering
-                            ? 'At least ${Validators.minPasswordLength} characters.'
+                            ? l10n.helperPasswordMinLength(
+                                Validators.minPasswordLength,
+                              )
                             : null,
-                        border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
-                          onPressed: () =>
-                              setState(() => _obscurePassword = !_obscurePassword),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                           icon: Icon(
                             _obscurePassword
                                 ? Icons.visibility_outlined
                                 : Icons.visibility_off_outlined,
                           ),
-                          tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                          tooltip: _obscurePassword
+                              ? l10n.actionShowPassword
+                              : l10n.actionHidePassword,
                         ),
                       ),
                       validator: Validators.password,
                     ),
 
                     if (failure != null) ...<Widget>[
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.lg),
                       _ErrorBanner(message: failure),
                     ],
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: AppSpacing.xl),
                     FilledButton(
                       onPressed: busy ? null : _submit,
                       child: busy
@@ -225,15 +243,19 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                               dimension: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(_registering ? 'Create account' : 'Sign in'),
+                          : Text(
+                              _registering
+                                  ? l10n.actionCreateAccount
+                                  : l10n.actionSignIn,
+                            ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     TextButton(
                       onPressed: busy ? null : _toggleMode,
                       child: Text(
                         _registering
-                            ? 'Already have an account? Sign in'
-                            : 'New to ${Env.appName}? Create an account',
+                            ? l10n.linkAlreadyRegistered
+                            : l10n.linkRegisterPrompt(Env.appName),
                       ),
                     ),
                   ],
@@ -256,16 +278,16 @@ class _ErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: colors.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(Icons.error_outline, color: colors.onErrorContainer, size: 20),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               message,

@@ -1,0 +1,55 @@
+{
+  "@@locale": "ar",
+
+  "appName": "Moaen",
+
+  "signInTitle": "تسجيل الدخول",
+  "registerTitle": "إنشاء حساب",
+
+  "authSignInSubtitle": "سجّل الدخول للمتابعة.",
+  "authRegisterSubtitle": "أنشئ حسابًا لطلب معاينة أو لتقديمها.",
+
+  "fieldFullName": "الاسم بالكامل",
+  "fieldEmail": "البريد الإلكتروني",
+  "fieldPassword": "كلمة المرور",
+  "fieldPhoneOptional": "الهاتف (اختياري)",
+  "fieldServiceCity": "مدينة الخدمة",
+
+  "helperPhone": "يُستخدم للتواصل معك بشأن المعاينة.",
+  "helperServiceCity": "ستظهر لك طلبات المعاينة من هذه المدينة فقط.",
+  "helperPasswordMinLength": "{length} أحرف على الأقل.",
+
+  "roleClient": "مشترٍ",
+  "roleInspector": "فاحص",
+  "roleAdmin": "مدير",
+
+  "rolePickClient": "أنا مشترٍ",
+  "rolePickInspector": "أنا فاحص",
+
+  "actionCreateAccount": "إنشاء حساب",
+  "actionSignIn": "تسجيل الدخول",
+  "actionSignOut": "تسجيل الخروج",
+  "actionShowPassword": "إظهار كلمة المرور",
+  "actionHidePassword": "إخفاء كلمة المرور",
+  "actionRetry": "حاول مرة أخرى",
+
+  "linkAlreadyRegistered": "لديك حساب بالفعل؟ سجّل الدخول",
+  "linkRegisterPrompt": "جديد على {appName}؟ أنشئ حسابًا",
+
+  "errorGeneric": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+
+  "detailEmail": "البريد الإلكتروني",
+  "detailPhone": "الهاتف",
+  "detailServiceCity": "مدينة الخدمة",
+  "detailRating": "التقييم",
+  "detailNoRatingsYet": "لا توجد تقييمات بعد",
+
+  "statusPending": "بانتظار فاحص",
+  "statusAccepted": "تم القبول",
+  "statusInProgress": "قيد التنفيذ",
+  "statusCompleted": "مكتملة",
+  "statusCancelled": "ملغاة",
+
+  "phase1Title": "اكتملت المرحلة الأولى",
+  "phase1Body": "الهوية والأدوار وتقييد المدينة تعمل بالفعل. طلبات المعاينة ولوحة الوظائف وإدخال التقرير تأتي في المرحلة الثانية."
+}

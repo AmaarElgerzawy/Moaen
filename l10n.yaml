@@ -1,0 +1,27 @@
+# Localisation configuration for `flutter gen-l10n`.
+#
+# Output is written into lib/ rather than the default synthetic package, so the
+# generated Dart is ordinary source: the analyzer checks it, and imports are
+# readable (`package:moaen/l10n/gen/app_localizations.dart`) instead of reaching
+# into .dart_tool.
+
+arb-dir: lib/l10n/arb
+
+# English is the template, so its keys define the contract. Every other locale is
+# checked against it: a missing or misspelled key is a build-time error, not a
+# silently-blank string at runtime.
+template-arb-file: app_en.arb
+
+output-dir: lib/l10n/gen
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+
+# `AppLocalizations.of(context)` returns a non-nullable value. The null-returning
+# form pushes a null check onto every call site for a condition the app never
+# actually hits: a MaterialApp with these delegates always resolves a locale.
+nullable-getter: false
+
+# Prefer an existing translation for a key over the template's English text. The
+# default silently falls back to English, which is how a half-translated locale
+# ships and nobody notices until a user reads it.
+untranslated-messages-file: build/l10n_untranslated.json

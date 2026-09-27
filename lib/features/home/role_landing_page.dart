@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/env.dart';
+import '../../core/theme/app_theme.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../auth/auth_controller.dart';
 import '../auth/user_profile.dart';
+import '../auth/user_role_localizations.dart';
 
 /// The signed-in screen, chosen by role.
 ///
@@ -15,6 +18,7 @@ class RoleLandingPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AsyncValue<UserProfile?> auth = ref.watch(authControllerProvider);
     final UserProfile? profile = auth.value;
 
@@ -27,7 +31,7 @@ class RoleLandingPage extends ConsumerWidget {
         title: const Text(Env.appName),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Sign out',
+            tooltip: l10n.actionSignOut,
             onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
             icon: const Icon(Icons.logout),
           ),
@@ -37,44 +41,55 @@ class RoleLandingPage extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             children: <Widget>[
-              CircleAvatar(
-                radius: 36,
-                backgroundImage: profile.avatarUrl == null
-                    ? null
-                    : NetworkImage(profile.avatarUrl!),
-                child: profile.avatarUrl == null
-                    ? Text(profile.fullName.substring(0, 1).toUpperCase())
-                    : null,
+              Center(
+                child: CircleAvatar(
+                  radius: 36,
+                  backgroundImage: profile.avatarUrl == null
+                      ? null
+                      : NetworkImage(profile.avatarUrl!),
+                  child: profile.avatarUrl == null
+                      ? Text(
+                          // substring(0, 1) would throw on an empty name. The
+                          // database requires a non-empty full_name, so this is
+                          // defensive only — but an avatar is not worth a crash.
+                          profile.fullName.isEmpty
+                              ? '?'
+                              : profile.fullName
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                        )
+                      : null,
+                ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               Text(
                 profile.fullName,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               Text(
-                profile.role.label,
+                profile.role.localizedName(context),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
-              const SizedBox(height: 32),
-              _DetailRow(label: 'Email', value: profile.email),
+              const SizedBox(height: AppSpacing.xxl),
+              _DetailRow(label: l10n.detailEmail, value: profile.email),
               if (profile.phone case final String phone when phone.isNotEmpty)
-                _DetailRow(label: 'Phone', value: phone),
+                _DetailRow(label: l10n.detailPhone, value: phone),
               if (profile.locationCity case final String city when city.isNotEmpty)
-                _DetailRow(label: 'Service city', value: city),
+                _DetailRow(label: l10n.detailServiceCity, value: city),
               if (profile.role == UserRole.inspector)
                 _DetailRow(
-                  label: 'Rating',
+                  label: l10n.detailRating,
                   value: profile.rating == 0
-                      ? 'No ratings yet'
+                      ? l10n.detailNoRatingsYet
                       : profile.rating.toStringAsFixed(2),
                 ),
-              const SizedBox(height: 32),
-              const _PhaseNotice(),
+              const SizedBox(height: AppSpacing.xxl),
+              _PhaseNotice(title: l10n.phase1Title, body: l10n.phase1Body),
             ],
           ),
         ),
@@ -95,6 +110,8 @@ class _DetailRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
+        // The label column is on the leading side, so it flips automatically
+        // under RTL. Nothing here is written as "left" or "right".
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(width: 110, child: Text(label, style: text.bodySmall)),
@@ -108,7 +125,10 @@ class _DetailRow extends StatelessWidget {
 }
 
 class _PhaseNotice extends StatelessWidget {
-  const _PhaseNotice();
+  const _PhaseNotice({required this.title, required this.body});
+
+  final String title;
+  final String body;
 
   @override
   Widget build(BuildContext context) {
@@ -116,13 +136,9 @@ class _PhaseNotice extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Phase 1 complete', style: text.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          'Identity, roles and city scoping are live. Inspection requests, the '
-          'job board and report entry arrive in Phase 2.',
-          style: text.bodySmall,
-        ),
+        Text(title, style: text.titleSmall),
+        const SizedBox(height: AppSpacing.xs),
+        Text(body, style: text.bodySmall),
       ],
     );
   }

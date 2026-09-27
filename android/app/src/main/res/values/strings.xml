@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher label. Arabic is the product's first language, so the Arabic
+  rendering lives in values-ar/ and Android picks it from the device locale. A
+  hardcoded android:label in the manifest cannot vary by locale, which is why it
+  is a string resource and not a literal.
+-->
+<resources>
+    <string name="app_name">Moaen</string>
+</resources>

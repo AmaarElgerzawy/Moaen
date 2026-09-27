@@ -1,0 +1,68 @@
+{
+  "@@locale": "en",
+
+  "appName": "Moaen",
+  "@appName": {
+    "description": "Product name. Kept in Latin script even in Arabic locales, because that is the registered brand. The launcher label under the app icon is a separate Android string resource (values/strings.xml, values-ar/strings.xml) because that is resolved by the platform before Flutter starts."
+  },
+
+  "signInTitle": "Sign in",
+  "registerTitle": "Create an account",
+
+  "authSignInSubtitle": "Sign in to continue.",
+  "authRegisterSubtitle": "Create an account to request or provide an inspection.",
+
+  "fieldFullName": "Full name",
+  "fieldEmail": "Email",
+  "fieldPassword": "Password",
+  "fieldPhoneOptional": "Phone (optional)",
+  "fieldServiceCity": "Service city",
+
+  "helperPhone": "Used to contact you about an inspection.",
+  "helperServiceCity": "You will see inspection requests from this city only.",
+  "helperPasswordMinLength": "At least {length} characters.",
+  "@helperPasswordMinLength": {
+    "placeholders": {
+      "length": { "type": "int" }
+    }
+  },
+
+  "roleClient": "Car buyer",
+  "roleInspector": "Inspector",
+  "roleAdmin": "Administrator",
+
+  "rolePickClient": "I am buying",
+  "rolePickInspector": "I inspect",
+
+  "actionCreateAccount": "Create account",
+  "actionSignIn": "Sign in",
+  "actionSignOut": "Sign out",
+  "actionShowPassword": "Show password",
+  "actionHidePassword": "Hide password",
+  "actionRetry": "Try again",
+
+  "linkAlreadyRegistered": "Already have an account? Sign in",
+  "linkRegisterPrompt": "New to {appName}? Create an account",
+  "@linkRegisterPrompt": {
+    "placeholders": {
+      "appName": { "type": "String" }
+    }
+  },
+
+  "errorGeneric": "Something went wrong. Please try again.",
+
+  "detailEmail": "Email",
+  "detailPhone": "Phone",
+  "detailServiceCity": "Service city",
+  "detailRating": "Rating",
+  "detailNoRatingsYet": "No ratings yet",
+
+  "statusPending": "Awaiting inspector",
+  "statusAccepted": "Accepted",
+  "statusInProgress": "In progress",
+  "statusCompleted": "Completed",
+  "statusCancelled": "Cancelled",
+
+  "phase1Title": "Phase 1 complete",
+  "phase1Body": "Identity, roles and city scoping are live. Inspection requests, the job board and report entry arrive in Phase 2."
+}

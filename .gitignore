@@ -33,6 +33,13 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Localisation output. `flutter gen-l10n` regenerates this from the ARB files in
+# lib/l10n/arb on every build, and it is deterministic, so committing it would
+# only create a second copy to keep in sync by hand. The ARB files are the source
+# of truth. The directory still exists for the analyzer and the compiler, which is
+# why this is an ignore rather than a delete.
+lib/l10n/gen/
+
 # Symbolication related
 app.*.symbols
 
@@ -47,10 +54,11 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 
-# Local build configuration. Holds the Supabase URL and publishable key handed
-# to `flutter run --dart-define-from-file`. The publishable key is public by
-# design, but a database password must never reach version control, so this
-# file is kept out entirely and each developer supplies their own.
+# Local build configuration. Optional since D6, which compiles the development
+# credentials into debug builds so a bare `flutter run` works. Useful for pointing
+# a build at a different Supabase project. The publishable key is public by
+# design, but a database password must never reach version control, so this file
+# is kept out entirely and each developer supplies their own.
 #
 # Named to avoid colliding with `.env.local`, which the Supabase CLI reads as
 # dotenv while `--dart-define-from-file` requires JSON.

@@ -87,6 +87,13 @@ Three environment facts that cost real time and are not discoverable from the co
   `assets/flutter_assets/kernel_blob.bin` in debug, `lib/<abi>/libapp.so` in
   release. This is the only reliable way to confirm what a build actually
   embeds, which is how D6's release exclusion is verified.
+- **Android resource strings are not greppable in `resources.arsc`** — the
+  string pool may be UTF-8 or UTF-16 and a raw byte search finds neither
+  reliably. Use the SDK tool instead:
+  `aapt2 dump resources <apk>`, which prints the resolved value per locale and
+  is the authority on whether `values-ar/` actually shipped. That is how the
+  localised launcher label is verified. Note the PowerShell console renders
+  Arabic as `?????`, so match on the surrounding structure, not the glyphs.
 
 ---
 
@@ -142,13 +149,20 @@ identity, seller contact) are frozen once a request leaves `pending`.
 ```
 lib/
   main.dart                       bootstrap: config -> logger -> Supabase -> run
-  app.dart                        MaterialApp.router, theme, lifecycle flush
+  app.dart                        MaterialApp.router, locale, delegates, lifecycle
   core/
     env.dart                      dart-define config, debug fallback + validation
     logging/app_logger.dart       async, bounded, redacting, rotating file sink
+    localization/locale_provider  the active locale; Arabic default (D7)
     router/app_router.dart        GoRouter + auth/role redirect guard
+    theme/app_theme.dart          AppSpacing / AppRadius / AppTheme tokens (D8)
+  l10n/
+    arb/app_en.arb                message template — its keys are the contract
+    arb/app_ar.arb                Arabic translations
+    gen/                          `flutter gen-l10n` output, gitignored
   features/
     auth/  user_profile · auth_repository · auth_controller · sign_in_page
+           user_role_localizations
     home/  role_landing_page
   shared/
     utils/validators.dart
@@ -158,12 +172,14 @@ supabase/
   migrations/0003_storage.sql     private buckets + object policies
   config.toml
 test/
+  core/localization_test.dart     RTL default, fallback, translation coverage
   core/logging/app_logger_test.dart
   features/auth/auth_flow_test.dart
   support/test_client.dart
   integration/rls_policies_test.dart   O2/O3/O4, against the live project
 tool/
   dart_defines.local.json         gitignored, optional client override (D6)
+l10n.yaml                         gen-l10n config; ARB in, Dart into lib/l10n/gen
 dart_test.yaml                    declares the `integration` tag
 ```
 
@@ -297,6 +313,8 @@ now returns a session. Only B3 stands between the project and M5.
 | D4 | **`user_role` enum is `client \| inspector \| admin`.** `admin` is never self-assignable (see Security design §4). Admin UI is Phase 3. |
 | D5 | **The RLS suite is Dart, not pgTAP.** `supabase test db` needs Docker, which this machine does not have. A pgTAP suite is not a workable substitute: it reports pass/fail by writing TAP to the *server's* stdout, which cannot be captured over a normal Postgres connection, so a Dart port of it would have passed no matter what the policies did. Driving the assertions from Dart yields real pass/fail, runs under the project's existing `flutter test`, and needs no second container. The pgTAP file was removed rather than left to drift — one source of truth for the security assertions. |
 | D6 | **Development credentials are hardcoded as a debug-only fallback.** `env.dart` compiles the project URL and publishable key into debug builds so a bare `flutter run` works on an emulator. The guard is the point: an unconditional fallback would let `flutter build apk --release` with no flags silently ship production users onto the testing database — starting cleanly and writing to the wrong place. In release and profile the fallbacks compile to `''`, are tree-shaken out, and `Env.validate()` throws as it did before. `--dart-define` always overrides. Both values are public by design, so embedding them leaks nothing; the database password and the `service_role` key must still never appear in a client build. **Verified against real builds**: the release APK contains neither the project ref nor the publishable key in any of its three `libapp.so` AOT snapshots, while the debug APK contains both in `kernel_blob.bin`. |
+| D7 | **Arabic-first, RTL by default.** The product is معاين, the users are Egyptian car buyers, and every string a user reads — city names, findings, report sections — is Arabic. Retrofitting RTL after the fact means re-auditing every `Row`, `EdgeInsets`, alignment and directional icon on every screen, so the direction is decided once, up front. The locale is a Riverpod provider (`localeProvider`) rather than a constant in `app.dart`, so a language switcher becomes a provider invalidation rather than a restructure — and so behaviour tests can render in English without pointing finders at wording that is expected to change. Arabic is both the default *and* the fallback: a device set to a language Moaen does not ship gets Arabic, not English. LTR still works; English is a fully supported locale. |
+| D8 | **No external UI designs exist; the app is built from the written brief.** The repository contains no mockups — no Figma reference in any tracked file, and the only images are Flutter's stock icon and a 68-byte launch placeholder. Rather than freeze that gap, the visual language is expressed as tokens (`AppSpacing`, `AppRadius`, `AppTheme`) so a design can be applied by editing one file instead of forty call sites, and so literal drift between screens is impossible. If designs arrive later, the tokens are the seam they slot into. |
 
 ### Assumptions
 
@@ -320,7 +338,7 @@ now returns a session. Only B3 stands between the project and M5.
 | P3 | PDF report generation. | `pdf_report_url` stays nullable until then. |
 | P4 | Media and PDF upload UI. | Buckets and policies exist (0003); only the client side is missing. |
 | P5 | Job board, request creation, report entry. | Phase 2 feature screens. No folders scaffolded yet. |
-| P6 | Arabic UI and RTL. | `intl` is pinned; translations and `flutter_localizations` arrive with the Phase 2 screens. |
+| P6 | ~~Arabic UI and RTL.~~ **done** — `flutter_localizations` + ARB (`lib/l10n/arb/app_{en,ar}.arb`), Arabic default and fallback, `Directionality` resolved by `MaterialApp` and asserted in `test/core/localization_test.dart`. Android launcher label localised via `values/strings.xml` and `values-ar/strings.xml`. |
 | P7 | Notifications on status change. | No push provider selected. |
 | P8 | Inspector payouts. | Follows the D1 escrow outcome. |
 | P9 | Re-enable email confirmation for production. | Disabled for Phase 1 testing; **restore before any real launch**, since a confirmed address is the only thing standing between a typo and an account takeover. |
@@ -336,7 +354,7 @@ now returns a session. Only B3 stands between the project and M5.
 | **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
 | **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 24/24 live |
-| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 22 unit + 24 integration |
+| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 31 unit + 24 integration |
 | **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** |
 
 ## Running it
