@@ -1,0 +1,36 @@
+# Line endings are pinned rather than left to each contributor's
+# core.autocrlf, because two of these files break silently when they are wrong.
+
+# gradlew is a shell script. A CRLF in the repository copy fails on Linux and macOS
+# with "bad interpreter: /bin/sh^M" — an error that points at the shell, not at
+# line endings, and that only appears on someone else's machine.
+gradlew text eol=lf
+
+# Windows batch files require CRLF. The reverse mistake is just as broken.
+*.bat text eol=crlf
+
+# Never line-ending-normalise a binary. Git's content sniffing usually catches a
+# jar, but a single stray CRLF in a jar breaks its signature check and produces a
+# "corrupt" wrapper that cannot be diagnosed from the symptom.
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.so binary
+
+# Source and configuration: LF in the repository, whatever the platform checks
+# out. Nothing here has a CRLF requirement, and a normalised repository keeps
+# diffs free of whole-file churn when contributors have mixed settings.
+*.dart text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.sql text eol=lf
+*.kts text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.gradle text eol=lf

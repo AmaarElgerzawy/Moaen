@@ -37,8 +37,9 @@ approximately expressible as Firestore rules.
 
 **`publishableKey`, not `anonKey`.** `supabase_flutter` 2.17.2 deprecates
 `anonKey` in favour of `publishableKey`. The dashboard now issues an
-`sb_publishable_…` key, which is what `tool/dart_defines.local.json` carries and
-what `/auth/v1/health` was verified against. The first half of P9 is closed.
+`sb_publishable_…` key, which is what `env.dart` falls back to in debug builds
+(D6) and what `/auth/v1/health` was verified against. The first half of P9 is
+closed.
 
 **`postgres` is a dev dependency, not app code.** It exists solely so the RLS
 suite can reach a real database; nothing under `lib/` imports it, and it is not
@@ -80,6 +81,12 @@ Three environment facts that cost real time and are not discoverable from the co
   containing only `.installer`) that Gradle could not repair or replace.
   `buildToolsVersion = "36.1.0"` in `android/app/build.gradle.kts` pins the
   revision that is actually complete on disk.
+- **Grepping an APK's raw bytes for a compiled string proves nothing.** Entries
+  are DEFLATE-compressed, so a search of the file as-is reports a credential
+  "missing" when it is present. Inflate first, then search the Dart snapshot —
+  `assets/flutter_assets/kernel_blob.bin` in debug, `lib/<abi>/libapp.so` in
+  release. This is the only reliable way to confirm what a build actually
+  embeds, which is how D6's release exclusion is verified.
 
 ---
 
@@ -89,7 +96,7 @@ Three environment facts that cost real time and are not discoverable from the co
 
 | # | Objective | Verified by | State |
 |---|---|---|---|
-| O1 | A session resolves to the correct role screen | `auth_flow_test.dart` — 4 tests | **done** |
+| O1 | A session resolves to the correct role screen | `auth_flow_test.dart` — 13 tests | **done** |
 | O2 | A client can never read or write another client's rows | `rls_policies_test.dart` — 10 tests | **done, live** |
 | O3 | An inspector sees pending jobs in their city only | `rls_policies_test.dart` — 5 tests | **done, live** |
 | O4 | A client cannot forge completion or a released payment | `rls_policies_test.dart` — 7 tests | **done, live** |
@@ -137,7 +144,7 @@ lib/
   main.dart                       bootstrap: config -> logger -> Supabase -> run
   app.dart                        MaterialApp.router, theme, lifecycle flush
   core/
-    env.dart                      dart-define config + validation
+    env.dart                      dart-define config, debug fallback + validation
     logging/app_logger.dart       async, bounded, redacting, rotating file sink
     router/app_router.dart        GoRouter + auth/role redirect guard
   features/
@@ -156,7 +163,7 @@ test/
   support/test_client.dart
   integration/rls_policies_test.dart   O2/O3/O4, against the live project
 tool/
-  dart_defines.local.json         gitignored client config (URL + publishable key)
+  dart_defines.local.json         gitignored, optional client override (D6)
 dart_test.yaml                    declares the `integration` tag
 ```
 
@@ -274,7 +281,7 @@ obstacle:
 
 | ID | Item | Action needed |
 |---|---|---|
-| **B3** | No Android emulator or device attached (`flutter doctor` lists only Windows/Chrome/Edge). Blocks the M5 smoke test. | Boot an AVD, then `flutter run --dart-define-from-file=tool\dart_defines.local.json`. |
+| **B3** | No Android emulator or device attached (`flutter doctor` lists only Windows/Chrome/Edge). Blocks the M5 smoke test. | Boot an AVD, then `flutter run`. |
 
 B1 (migrations unapplied) and B2 (email confirmation left on) are **resolved** —
 B2 confirmed by `/auth/v1/settings` reporting `mailer_autoconfirm: true`. Sign-up
@@ -289,6 +296,7 @@ now returns a session. Only B3 stands between the project and M5.
 | D3 | **Backend provisioning.** Free hosted project `ybglobvcqgkfclvkjkri`, not Docker. |
 | D4 | **`user_role` enum is `client \| inspector \| admin`.** `admin` is never self-assignable (see Security design §4). Admin UI is Phase 3. |
 | D5 | **The RLS suite is Dart, not pgTAP.** `supabase test db` needs Docker, which this machine does not have. A pgTAP suite is not a workable substitute: it reports pass/fail by writing TAP to the *server's* stdout, which cannot be captured over a normal Postgres connection, so a Dart port of it would have passed no matter what the policies did. Driving the assertions from Dart yields real pass/fail, runs under the project's existing `flutter test`, and needs no second container. The pgTAP file was removed rather than left to drift — one source of truth for the security assertions. |
+| D6 | **Development credentials are hardcoded as a debug-only fallback.** `env.dart` compiles the project URL and publishable key into debug builds so a bare `flutter run` works on an emulator. The guard is the point: an unconditional fallback would let `flutter build apk --release` with no flags silently ship production users onto the testing database — starting cleanly and writing to the wrong place. In release and profile the fallbacks compile to `''`, are tree-shaken out, and `Env.validate()` throws as it did before. `--dart-define` always overrides. Both values are public by design, so embedding them leaks nothing; the database password and the `service_role` key must still never appear in a client build. **Verified against real builds**: the release APK contains neither the project ref nor the publishable key in any of its three `libapp.so` AOT snapshots, while the debug APK contains both in `kernel_blob.bin`. |
 
 ### Assumptions
 
@@ -325,10 +333,10 @@ now returns a session. Only B3 stands between the project and M5.
 | M | Deliverable | Pass condition | State |
 |---|---|---|---|
 | **M0** | Toolchain | `flutter --version` reports 3.47.5 / Dart 3.13.4 | **met** |
-| **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — APK 161.7 MB |
+| **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
 | **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 24/24 live |
-| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 17 unit + 24 integration |
+| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 22 unit + 24 integration |
 | **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** |
 
 ## Running it
@@ -338,19 +346,26 @@ now returns a session. Only B3 stands between the project and M5.
 $env:MOAEN_DB_URL = "postgresql://postgres.ybglobvcqgkfclvkjkri:<pw>@aws-0-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require"
 flutter test test\integration\rls_policies_test.dart
 
-# 2. client
+# 2. client — no flags needed
 flutter pub get
-flutter run --dart-define-from-file=tool\dart_defines.local.json
+flutter run
 flutter test
 ```
 
-`flutter test` on its own reports 17 passing and 24 skipped: the RLS suite skips
+`flutter test` on its own reports 22 passing and 24 skipped: the RLS suite skips
 itself when `MOAEN_DB_URL` is absent, so a developer with no database credential
 still gets a useful signal. A credential that is *present but wrong* is not
 skipped — it fails loudly.
 
+A bare `flutter run` is enough (D6): debug builds fall back to the development
+project. To point a build somewhere else, override with `--dart-define` or
+`--dart-define-from-file=tool\dart_defines.local.json`. The boot log records
+which one applied as `config=dev-fallback|dart-define`, so a log file always
+states the backend the app actually reached.
+
 `tool/dart_defines.local.json` holds the project URL and the publishable key,
-both public by design, but it is gitignored anyway so that a database password
-cannot be committed alongside them. It is named to avoid colliding with
+both public by design, and is optional since D6. It stays gitignored as a matter
+of habit so that a credential that is *not* public — a database password — can
+never be committed alongside them. It is named to avoid colliding with
 `.env.local`, which the Supabase CLI reads as dotenv while
 `--dart-define-from-file` requires JSON — the two formats are not compatible.

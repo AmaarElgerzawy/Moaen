@@ -78,19 +78,74 @@ Widget _app(FakeAuthRepository repository) => ProviderScope(
 
 void main() {
   group('configuration', () {
-    test('reports an unconfigured build and names the missing defines', () {
-      // Tests compile without --dart-define, so this is the path a developer
-      // hits on a bare `flutter run`. It must be actionable, not silent.
-      expect(Env.isSupabaseConfigured, isFalse);
+    // A debug build falls back to the development project, so a bare
+    // `flutter run` is configured. These tests run in debug, which means they
+    // can never observe a release build's missing-credentials path directly;
+    // `validateCredentials` takes the values as parameters precisely so that
+    // path stays reachable from here.
+    test('a debug build is configured without any --dart-define', () {
+      expect(Env.isSupabaseConfigured, isTrue);
+      expect(Env.isUsingDevDefaults, isTrue);
+      // Must not throw, or the app would refuse to start on the emulator.
+      expect(Env.validate, returnsNormally);
+    });
+
+    test('a missing url is reported with an actionable message', () {
       expect(
-        Env.validate,
+        () => Env.validateCredentials('', 'sb_publishable_x'),
         throwsA(
           isA<AppConfigurationError>().having(
             (AppConfigurationError e) => e.message,
             'message',
-            allOf(contains('SUPABASE_URL'), contains('SUPABASE_PUBLISHABLE_KEY')),
+            allOf(
+              contains('SUPABASE_URL'),
+              contains('SUPABASE_PUBLISHABLE_KEY'),
+            ),
           ),
         ),
+      );
+    });
+
+    test('a missing key is reported with an actionable message', () {
+      expect(
+        () => Env.validateCredentials('https://x.supabase.co', ''),
+        throwsA(isA<AppConfigurationError>()),
+      );
+    });
+
+    test('a url that is not absolute is rejected', () {
+      expect(
+        () => Env.validateCredentials('ybglobvcqgkfclvkjkri.supabase.co', 'k'),
+        throwsA(
+          isA<AppConfigurationError>().having(
+            (AppConfigurationError e) => e.message,
+            'message',
+            contains('absolute http(s) URL'),
+          ),
+        ),
+      );
+    });
+
+    test('a non-http scheme is rejected', () {
+      expect(
+        () => Env.validateCredentials('ftp://x.supabase.co', 'k'),
+        throwsA(
+          isA<AppConfigurationError>().having(
+            (AppConfigurationError e) => e.message,
+            'message',
+            contains('must use http or https'),
+          ),
+        ),
+      );
+    });
+
+    test('a valid release configuration passes', () {
+      expect(
+        () => Env.validateCredentials(
+          'https://ybglobvcqgkfclvkjkri.supabase.co',
+          'sb_publishable_qGZ3U2FHarEMD9Mtsg8mHg_eYsNswOp',
+        ),
+        returnsNormally,
       );
     });
   });
@@ -166,7 +221,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Enter a valid email address'), findsOneWidget);
-      expect(repository.signInCalls, 0, reason: 'validation must gate the call');
+      expect(
+        repository.signInCalls,
+        0,
+        reason: 'validation must gate the call',
+      );
     });
 
     testWidgets('surfaces a failure from the repository', (
@@ -178,7 +237,10 @@ void main() {
       await tester.pumpWidget(_app(repository));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField).first, 'nadia@example.com');
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'nadia@example.com',
+      );
       await tester.enterText(find.byType(TextFormField).last, 'wrong-password');
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();

@@ -1,11 +1,16 @@
-gradle-wrapper.jar
+# The Gradle wrapper is deliberately NOT ignored. Flutter's template excludes it,
+# which means a fresh clone or a CI runner gets gradle-wrapper.properties — and
+# so learns it wants Gradle 9.3.1 — but not the jar or the scripts needed to
+# fetch it, and silently falls back to whatever Gradle happens to be installed.
+# That produces "Unsupported class file major version" or an outright failure on
+# a machine that has none, and the cause is not obvious from the error. Gradle's
+# own recommendation is to commit all four files together.
 /.gradle
 /captures/
-/gradlew
-/gradlew.bat
 /local.properties
 GeneratedPluginRegistrant.java
 .cxx/
+.kotlin/
 
 # Remember to never publicly share your keystore.
 # See https://flutter.dev/to/reference-keystore

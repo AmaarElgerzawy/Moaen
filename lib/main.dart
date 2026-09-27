@@ -27,7 +27,14 @@ Future<void> main() async {
 
   await _installFileLogger();
   AppLogger.instance.start();
-  AppLogger.instance.info('boot', {'version': '0.1.0', 'supabase': Env.supabaseUrl});
+  AppLogger.instance.info('boot', <String, Object?>{
+    'version': '0.1.0',
+    'supabase': Env.supabaseUrl,
+    // Recorded so a log file always says which backend the app reached. A
+    // smoke test that silently used the development fallback is not evidence
+    // that the configured build works.
+    'config': Env.isUsingDevDefaults ? 'dev-fallback' : 'dart-define',
+  });
 
   try {
     await Supabase.initialize(
@@ -35,10 +42,15 @@ Future<void> main() async {
       publishableKey: Env.supabasePublishableKey,
     );
   } catch (error, stackTrace) {
-    AppLogger.instance.error('supabase initialisation failed', error, stackTrace);
+    AppLogger.instance.error(
+      'supabase initialisation failed',
+      error,
+      stackTrace,
+    );
     runApp(
       const ConfigurationErrorApp(
-        message: 'Could not reach the Moaen backend. Please check your '
+        message:
+            'Could not reach the Moaen backend. Please check your '
             'connection and try again.',
       ),
     );
