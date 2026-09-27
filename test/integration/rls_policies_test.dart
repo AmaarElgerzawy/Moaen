@@ -405,6 +405,87 @@ void main() {
         );
       });
     });
+
+    // The reference number is the handle a buyer quotes to an inspector, so its
+    // integrity is a security property. The grant on car_inspections is
+    // table-level and Postgres column privileges are additive, which means a
+    // client keeps UPDATE on reference_no no matter what a column-level revoke
+    // says. Only a trigger closes that, and only a trigger can tell "the client
+    // sent this" from "the database assigned this".
+    group('request reference integrity', () {
+      rlsTest('the server assigns a reference the client did not choose', () async {
+        await harness.asUser(clientB);
+        // A reference of 999999 is plausible-looking and belongs to nobody. The
+        // point is that the insert succeeds at all and the value is replaced.
+        await harness.db.execute('''
+          insert into public.car_inspections
+            (client_id, car_make, car_model, car_year, seller_phone,
+             seller_location_address, city, price, reference_no)
+          values (\$1::uuid, 'Renault', 'Sandero', 2018, '+201000000009',
+                  '9 Nasr City', 'Cairo', 450, 999999)
+        ''', parameters: [clientB]);
+
+        final Object? assigned = await harness.scalar(
+          'select reference_no from public.car_inspections '
+          "where client_id = \$1::uuid and car_make = 'Renault'",
+          [clientB],
+        );
+        expect(assigned, isNotNull);
+        expect(
+          assigned,
+          isNot(999999),
+          reason: 'a client-supplied reference must be overwritten, not obeyed',
+        );
+      });
+
+      rlsTest('a client cannot renumber a request they already own', () async {
+        await harness.asUser(clientA);
+        final Object? before = await harness.scalar(
+          'select reference_no from public.car_inspections where id = \$1::uuid',
+          [jobCairoForClientA],
+        );
+        expect(before, isNotNull);
+
+        // Not denied: the row is theirs, so RLS permits the write. The trigger
+        // restores the number, which is why this asserts the value rather than
+        // an error. Expecting a rejection here would be testing the wrong layer.
+        await harness.db.execute(
+          'update public.car_inspections set reference_no = 424242 '
+          'where id = \$1::uuid',
+          parameters: [jobCairoForClientA],
+        );
+
+        final Object? after = await harness.scalar(
+          'select reference_no from public.car_inspections where id = \$1::uuid',
+          [jobCairoForClientA],
+        );
+        expect(
+          after,
+          before,
+          reason: "the reference is the server's to assign; the client's "
+              'attempt to change it must be discarded',
+        );
+      });
+
+      rlsTest('references are unique across requests', () async {
+        await harness.asSuperuser();
+        final Object? duplicated = await harness.scalar('''
+          select count(*) from (
+            select reference_no from public.car_inspections
+            group by reference_no having count(*) > 1
+          ) dupes
+        ''');
+        expect(duplicated, 0);
+      });
+
+      rlsTest('every request carries a reference', () async {
+        await harness.asSuperuser();
+        final Object? missing = await harness.scalar(
+          'select count(*) from public.car_inspections where reference_no is null',
+        );
+        expect(missing, 0, reason: 'the column is NOT NULL and defaulted');
+      });
+    });
   });
 }
 

@@ -64,5 +64,76 @@
   "statusCancelled": "Cancelled",
 
   "phase1Title": "Phase 1 complete",
-  "phase1Body": "Identity, roles and city scoping are live. Inspection requests, the job board and report entry arrive in Phase 2."
+  "phase1Body": "Identity, roles and city scoping are live. Inspection requests, the job board and report entry arrive in Phase 2.",
+
+  "navRequests": "My requests",
+  "navDashboard": "Home",
+
+  "dashboardGreeting": "Hello, {name}",
+  "@dashboardGreeting": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "dashboardActiveTitle": "Your active request",
+  "dashboardReportReadyTitle": "Your report is ready",
+  "dashboardCancelledTitle": "Your last request",
+  "dashboardNoActiveTitle": "No active request",
+  "dashboardNoActiveBody": "Book an inspection before you travel to buy a car. A local inspector checks it and sends you a report.",
+  "dashboardNewRequest": "Request an inspection",
+  "dashboardViewRequests": "View all requests",
+  "dashboardReference": "Request number",
+  "dashboardSteps": "Progress",
+  "dashboardStepRequested": "Requested",
+  "dashboardStepMatched": "Inspector assigned",
+  "dashboardStepInspecting": "Inspection",
+  "dashboardStepReport": "Report ready",
+
+  "costTitle": "Cost estimate",
+  "costInspection": "Inspection fee",
+  "costTravel": "Travel",
+  "costTotal": "Total",
+  "costEstimateNotice": "This is an estimate. The final price is agreed with the inspector before the inspection starts.",
+  "costFree": "Free",
+
+  "createTitle": "New inspection request",
+  "createSectionVehicle": "Vehicle",
+  "createSectionSeller": "Seller and location",
+  "createSectionNotes": "Notes for the inspector",
+  "createNotesHint": "Anything the inspector should know: when the car can be seen, what looks wrong, how trustworthy the seller is.",
+  "createNotesOptional": "Optional",
+  "createSubmit": "Send request",
+  "createSuccess": "Request {reference} sent. An inspector in {city} will pick it up.",
+  "@createSuccess": {
+    "placeholders": {
+      "reference": { "type": "String" },
+      "city": { "type": "String" }
+    }
+  },
+
+  "fieldCarMake": "Make",
+  "fieldCarModel": "Model",
+  "fieldCarYear": "Year",
+  "fieldSellerPhone": "Seller phone",
+  "fieldSellerAddress": "Where is the car?",
+  "fieldCity": "City",
+  "fieldInspectionCentre": "Inspection centre",
+  "fieldBudget": "Your budget (EGP)",
+  "fieldBudgetHint": "The amount you are willing to pay. The inspector confirms before starting.",
+
+  "myRequestsTitle": "My requests",
+  "myRequestsEmpty": "You have not requested an inspection yet.",
+  "myRequestsOpen": "Open",
+  "myRequestsSettled": "Settled",
+  "actionViewDetails": "View details",
+  "actionCancelRequest": "Cancel request",
+  "actionCancelConfirm": "Cancel this request?",
+  "actionCancelBody": "The inspector will be told the request is no longer needed. This cannot be undone.",
+  "actionKeep": "Keep it",
+  "requestCancelled": "Request cancelled.",
+
+  "errorRequired": "This field is required",
+  "errorInvalidYear": "Enter a year between 1950 and 2100",
+  "errorInvalidPhone": "Enter a valid phone number",
+  "errorInvalidBudget": "Enter an amount, for example 500"
 }

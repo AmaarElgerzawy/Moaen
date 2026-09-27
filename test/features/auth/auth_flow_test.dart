@@ -9,6 +9,8 @@ import 'package:moaen/features/auth/auth_repository.dart';
 import 'package:moaen/features/auth/sign_in_page.dart';
 import 'package:moaen/features/auth/user_profile.dart';
 import 'package:moaen/features/home/role_landing_page.dart';
+import 'package:moaen/features/inspections/application/inspection_controller.dart';
+import 'package:moaen/features/inspections/presentation/client_dashboard_page.dart';
 
 import '../../support/test_client.dart';
 
@@ -84,6 +86,11 @@ Widget _app(FakeAuthRepository repository) => ProviderScope(
   overrides: [
     authRepositoryProvider.overrideWithValue(repository),
     localeProvider.overrideWithValue(const Locale('en')),
+    // A client now lands on the dashboard, which reads the buyer's open
+    // request. Overridden rather than allowed to reach the fake Supabase
+    // client, which would attempt a real request and leave an unresolved
+    // future in the test. Null is the honest "no active request" state.
+    dashboardRequestProvider.overrideWith((Ref ref) async => null),
   ],
   child: const MoaenApp(),
 );
@@ -173,7 +180,7 @@ void main() {
       expect(find.byType(RoleLandingPage), findsNothing);
     });
 
-    testWidgets('a restored session lands on the role screen (O1)', (
+    testWidgets('a restored client session lands on the dashboard (O1)', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -181,9 +188,31 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(RoleLandingPage), findsOneWidget);
+      expect(find.byType(ClientDashboardPage), findsOneWidget);
+      expect(find.byType(RoleLandingPage), findsNothing);
       expect(find.byType(SignInPage), findsNothing);
-      expect(find.text('Nadia Hassan'), findsOneWidget);
+    });
+
+    testWidgets('a restored inspector session lands on the role screen (O1)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          FakeAuthRepository(
+            userId: 'user-2',
+            profile: _profile(role: UserRole.inspector, city: 'Cairo'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The inspector half of O1 is unchanged: there is no inspector screen in
+      // this phase, so the role screen is still their destination. The client's
+      // is not, and a test that asserted one destination for both roles would
+      // have passed right up until the dashboard existed.
+      expect(find.byType(RoleLandingPage), findsOneWidget);
+      expect(find.byType(ClientDashboardPage), findsNothing);
+      expect(find.byType(SignInPage), findsNothing);
     });
 
     testWidgets('signing out returns to the sign-in screen', (

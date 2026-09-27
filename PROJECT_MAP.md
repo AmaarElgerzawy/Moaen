@@ -194,14 +194,23 @@ Verified by querying the catalog of the live project after `supabase db push`:
 
 | Property | Expected | Live |
 |---|---|---|
-| Migrations applied | 0001, 0002, 0003 | 0001, 0002, 0003 |
+| Migrations applied | 0001, 0002, 0003 | 0001, 0002, 0003, 0004 |
 | Tables | 5 | 5 (+ `inspector_profiles` view) |
 | Primary keys | 5 | 5 |
 | Foreign keys | 5 among app tables | 6 — the sixth is `users.id → auth.users.id` |
 | RLS enabled | all 5 | all 5 |
 | Policies | — | 13 |
-| Triggers | 2 in `public` | 2 in `public` + 1 on `auth.users` |
+| Triggers | 2 in `public` | 3 in `public` + 1 on `auth.users` |
 | Storage buckets | 2 private | 2, both `public = false` |
+
+Migration 0004 adds two columns to `car_inspections` and the sequence behind
+them: `reference_no bigint NOT NULL` (server-assigned, from a sequence starting at
+1000, rendered as `MN-1001`) and `client_notes text`. Neither needed a policy or
+grant change, because Phase 1's grants are table-level and its policies are
+row-level with no column lists — a fact worth recording, because the usual
+assumption is that a new column means a new policy. *Verified live by undo →
+column-absent → re-apply, so it is correct from an empty database and not merely
+present.* See D9 and D10.
 
 `users` — 1:1 with `auth.users` · `car_inspections` — aggregate root ·
 `inspection_reports` — one per inspection · `report_media` — append-only ·
@@ -264,7 +273,7 @@ case-insensitively; normalising it waits until a second consumer needs a list.
 
 ### How the RLS policies are actually proven
 
-`test/integration/rls_policies_test.dart` — **24 assertions, all executed against
+`test/integration/rls_policies_test.dart` — **28 assertions, all executed against
 the live project.** The mechanics are worth recording, because each one was a real
 obstacle:
 
@@ -288,6 +297,20 @@ obstacle:
   to 0 would make every "sees nothing" assertion pass vacuously while the "sees
   something" ones failed for no visible reason — which is exactly the failure mode
   that cost a debugging cycle here.
+- **The reference-integrity assertions (D9) assert the value, not the absence of
+  an error.** RLS *permits* a client to UPDATE its own row; the trigger discards
+  the change. A test asserting only "no error was raised" would therefore pass
+  against a trigger that did nothing at all. The suite asserts the stored number
+  is unchanged, and that a client-supplied number is overwritten on insert.
+- **A custom enum column arrives as `UndecodedBytes`**, not a Dart enum — cast
+  `::text` in the query. A `bigint` arrives as a Dart `int`, while a `numeric`
+  serialises as `500` and therefore decodes as an `int` where the model wants a
+  `double`; `_asDouble` covers `int`, `double` and `String`.
+- **`Connection.openFromUrl(url)` takes the URI positionally** — there is no
+  `Connection.open(uri: …)` — and `Result` is not generic. The driver always uses
+  the extended query protocol, so a multi-statement `execute` fails with
+  `42601: cannot insert multiple commands into a prepared statement`. That is why
+  `tool/sql_statement_splitter.dart` exists.
 
 ---
 
@@ -315,6 +338,11 @@ now returns a session. Only B3 stands between the project and M5.
 | D6 | **Development credentials are hardcoded as a debug-only fallback.** `env.dart` compiles the project URL and publishable key into debug builds so a bare `flutter run` works on an emulator. The guard is the point: an unconditional fallback would let `flutter build apk --release` with no flags silently ship production users onto the testing database — starting cleanly and writing to the wrong place. In release and profile the fallbacks compile to `''`, are tree-shaken out, and `Env.validate()` throws as it did before. `--dart-define` always overrides. Both values are public by design, so embedding them leaks nothing; the database password and the `service_role` key must still never appear in a client build. **Verified against real builds**: the release APK contains neither the project ref nor the publishable key in any of its three `libapp.so` AOT snapshots, while the debug APK contains both in `kernel_blob.bin`. |
 | D7 | **Arabic-first, RTL by default.** The product is معاين, the users are Egyptian car buyers, and every string a user reads — city names, findings, report sections — is Arabic. Retrofitting RTL after the fact means re-auditing every `Row`, `EdgeInsets`, alignment and directional icon on every screen, so the direction is decided once, up front. The locale is a Riverpod provider (`localeProvider`) rather than a constant in `app.dart`, so a language switcher becomes a provider invalidation rather than a restructure — and so behaviour tests can render in English without pointing finders at wording that is expected to change. Arabic is both the default *and* the fallback: a device set to a language Moaen does not ship gets Arabic, not English. LTR still works; English is a fully supported locale. |
 | D8 | **No external UI designs exist; the app is built from the written brief.** The repository contains no mockups — no Figma reference in any tracked file, and the only images are Flutter's stock icon and a 68-byte launch placeholder. Rather than freeze that gap, the visual language is expressed as tokens (`AppSpacing`, `AppRadius`, `AppTheme`) so a design can be applied by editing one file instead of forty call sites, and so literal drift between screens is impossible. If designs arrive later, the tokens are the seam they slot into. |
+| D9 | **`reference_no` is server-assigned and enforced by a trigger, not a column revoke.** A buyer needs something to read out over the phone — `MN-1001` — and the number must not be forgeable, because it is what an inspector and a buyer match on. Migration 0004 adds a `bigint` from a sequence starting at 1000 plus a `BEFORE INSERT OR UPDATE` trigger. The first instinct, `revoke update (reference_no)`, does not work: **Postgres column privileges are additive**, so a table-level `grant select, insert, update` leaves the client able to rewrite the column no matter what is revoked. The trigger overwrites the value on insert and *restores* the stored value on update. Restoring rather than raising is deliberate: raising would break an unrelated field update on the same row (a phone-number correction, say) with an error about a number the user never touched. *Verified live: four assertions, asserting restored values rather than rejections.* |
+| D10 | **`client_notes` is separate from `inspection_reports.notes`.** The brief has one "notes" field; there are two distinct things — what the buyer tells the inspector before the visit, and what the inspector finds after it. Conflating them loses the buyer's instructions the moment a report exists. Bounded at 1000 characters, and the create form counts as you type rather than rejecting on submit, so a buyer over the limit finds out while they can still cut something. |
+| D11 | **The pricing breakdown is display-only.** `price` is one column and D2 forbids a quotes table, so `CostEstimate` presents a single number rather than persisted line items. The base fee (`baseInspectionFee = 500`) is a placeholder constant in exactly one place, pending a real pricing source. Both the create form and the dashboard derive their split from that one constant, so the number a buyer approved and the number they later see cannot disagree. Every total is labelled as an estimate: a total shown without that reads as a charge that has already happened, when it is a budget the buyer stated. |
+| D12 | **Migrations are applied by `tool/apply_migration.dart`.** `supabase db push` requires `supabase link` (not linked), `psql` is not on PATH, and `supabase db reset` needs Docker. The script runs each file in one transaction via the Dart `postgres` driver, so a failure rolls back rather than leaving a half-applied schema. It depends on `tool/sql_statement_splitter.dart`, because the driver has no simple-query mode. |
+| D13 | **The dashboard leads with the buyer's *most recent* request, not their most *urgent* one.** The obvious rule — filter to open requests — is wrong for this product. The instant an inspection completes, a buyer who filtered to open would be told they have no active request and be offered to book another, and the report they paid for and travelled for would be unreachable from the screen they open first. Cancelled requests are shown for the same honesty reason. Ranking an open request above a completed one was also rejected: a buyer realistically has one live request, and an invented priority would be a product decision smuggled into a query. The card title is status-aware, because a finished report labelled "your active request" is still telling the buyer the wrong thing. |
 
 ### Assumptions
 
@@ -337,12 +365,14 @@ now returns a session. Only B3 stands between the project and M5.
 | P2 | Escrow release / refund endpoint. | D1. A service-role Edge Function plus an audit log. |
 | P3 | PDF report generation. | `pdf_report_url` stays nullable until then. |
 | P4 | Media and PDF upload UI. | Buckets and policies exist (0003); only the client side is missing. |
-| P5 | Job board, request creation, report entry. | Phase 2 feature screens. No folders scaffolded yet. |
+| P5 | ~~Job board, request creation, report entry.~~ **Partly done** — request creation, the dashboard tracker, the list and the detail view are built and tested. Still open: the **city-scoped inspector job board** (accept / decline / start / complete) and **report entry**. | Inspector work needs its own screens; the state machine's transitions are already enforced by trigger, so the UI cannot skip them. |
 | P6 | ~~Arabic UI and RTL.~~ **done** — `flutter_localizations` + ARB (`lib/l10n/arb/app_{en,ar}.arb`), Arabic default and fallback, `Directionality` resolved by `MaterialApp` and asserted in `test/core/localization_test.dart`. Android launcher label localised via `values/strings.xml` and `values-ar/strings.xml`. |
 | P7 | Notifications on status change. | No push provider selected. |
 | P8 | Inspector payouts. | Follows the D1 escrow outcome. |
 | P9 | Re-enable email confirmation for production. | Disabled for Phase 1 testing; **restore before any real launch**, since a confirmed address is the only thing standing between a typo and an account takeover. |
 | P10 | Normalise `city` to a reference table. | Awaits a second consumer (A5/A2). |
+| P11 | **Release signing is unverified.** `flutter build apk --release` with no `key.properties` falls back to debug keys. A real keystore is required before distribution, and the build will look successful right up until it matters. |
+| P12 | **No screen has been seen on a real device** (B3). The RTL work is asserted from laid-out geometry rather than from a screenshot, which catches a number on the wrong edge but cannot catch a font that renders Arabic as boxes. | Needs an emulator. |
 
 ---
 
@@ -353,9 +383,10 @@ now returns a session. Only B3 stands between the project and M5.
 | **M0** | Toolchain | `flutter --version` reports 3.47.5 / Dart 3.13.4 | **met** |
 | **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
-| **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 24/24 live |
-| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 31 unit + 24 integration |
+| **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 28/28 live |
+| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 115 unit/widget + 28 integration |
 | **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** |
+| **M6** | Client request flow | Dashboard, create form, list and detail render in both locales; create/cancel reach the database | **met** — but see B3: it has never run on a device |
 
 ## Running it
 
@@ -364,13 +395,16 @@ now returns a session. Only B3 stands between the project and M5.
 $env:MOAEN_DB_URL = "postgresql://postgres.ybglobvcqgkfclvkjkri:<pw>@aws-0-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require"
 flutter test test\integration\rls_policies_test.dart
 
-# 2. client — no flags needed
+# 2. apply a migration — the only working route to the live DB on this machine (D12)
+dart run tool\apply_migration.dart supabase\migrations\000N.sql
+
+# 3. client — no flags needed
 flutter pub get
 flutter run
 flutter test
 ```
 
-`flutter test` on its own reports 22 passing and 24 skipped: the RLS suite skips
+`flutter test` on its own reports 115 passing and 28 skipped: the RLS suite skips
 itself when `MOAEN_DB_URL` is absent, so a developer with no database credential
 still gets a useful signal. A credential that is *present but wrong* is not
 skipped — it fails loudly.
@@ -380,6 +414,39 @@ project. To point a build somewhere else, override with `--dart-define` or
 `--dart-define-from-file=tool\dart_defines.local.json`. The boot log records
 which one applied as `config=dev-fallback|dart-define`, so a log file always
 states the backend the app actually reached.
+
+### Traps in the widget tests
+
+Recorded because each one cost a debugging cycle, and none of them announce
+themselves:
+
+- **The default test surface is 800×600 and a `ListView` only builds what is near
+  the viewport.** A submit button below the fold is not merely invisible — it is
+  absent from the tree, so `find` reports zero candidates and the failure reads as
+  "no such widget" rather than "off screen". The inspection tests set a tall
+  `tester.view.physicalSize` in one `_pump` helper.
+- **A `Row` hands non-flex children unbounded main-axis constraints.** A `Column`
+  holding a label therefore takes the label's full intrinsic width, which
+  overflows its quarter-slot. The English labels fit; the Arabic ones are longer.
+  This was a real 23-pixel overflow on the dashboard's progress track, found only
+  because a test rendered it in Arabic — the exact class of bug that reaches
+  production when the team reads the app in English.
+- **`AppLocalizations.of(context)` returns null for a `MaterialApp`'s own
+  context,** because `Localizations` is installed *inside* `MaterialApp`. Read it
+  from a page's context.
+- **Do not hard-code Arabic literals in tests.** Diacritics are lost easily —
+  "منتهٍ" without its tanween is a different string — and a literal is a second
+  copy of the ARB that goes stale silently. `rtl_layout_test.dart` reads expected
+  strings from `AppLocalizations` and asserts "is Arabic" against the script range
+  rather than against a phrase.
+- **A test router needs route *names*, not just paths,** if the pages under test
+  navigate with `pushNamed`. Without them the first tap fails inside go_router with
+  `unknown route name`, which points nowhere near the cause.
+- **`.in(...)` cannot be spelled on a `PostgrestFilterBuilder`** — `in` is a
+  keyword. The method is `inFilter`.
+- **Never type an Arabic string in a PowerShell assertion.** The console renders
+  it as `??????` and the comparison fails for a reason that has nothing to do with
+  the code. Read the value from the file instead.
 
 `tool/dart_defines.local.json` holds the project URL and the publishable key,
 both public by design, and is optional since D6. It stays gitignored as a matter

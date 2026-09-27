@@ -163,6 +163,37 @@ void main() {
             'an Arabic user sees English: $untranslated',
       );
     });
+
+    test('no Arabic value contains a stray English word', () {
+      // The coverage test above cannot see this: a value that is *partly*
+      // translated still differs from the template, so it passes. Writing the
+      // Arabic strings, an English word slipped into the middle of one
+      // ("المبلغ الذي you're مستعد لدفعه") and nothing flagged it.
+      //
+      // Placeholders are excluded because `{city}` is supposed to be Latin, and
+      // the brand is excluded because it is Latin by design.
+      const Set<String> latinAllowed = <String>{'appName'};
+      final RegExp placeholder = RegExp(r'\{[a-zA-Z]+\}');
+      final RegExp latinWord = RegExp(r'[A-Za-z]{2,}');
+
+      final List<String> offenders = <String>[];
+      _readArb('lib/l10n/arb/app_ar.arb').forEach((String key, dynamic value) {
+        if (key.startsWith('@') || latinAllowed.contains(key)) return;
+        if (value is! String) return;
+        // Strip placeholders first, so `{city}` is not itself read as English.
+        final String withoutPlaceholders = value.replaceAll(placeholder, '');
+        if (latinWord.hasMatch(withoutPlaceholders)) {
+          offenders.add('$key = $value');
+        }
+      });
+
+      expect(
+        offenders,
+        isEmpty,
+        reason: 'Latin text inside an Arabic value is an untranslated fragment: '
+            '$offenders',
+      );
+    });
   });
 
   group('theme tokens', () {
