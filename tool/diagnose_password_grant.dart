@@ -63,9 +63,9 @@ Future<void> main() async {
     final String body = await response.transform(utf8.decoder).join();
     stdout.writeln('--- password grant -> HTTP ${response.statusCode}');
     stdout.writeln(
-      body.replaceAll(
+      body.replaceAllMapped(
         RegExp(r'"(access_token|refresh_token)"\s*:\s*"[^"]*"'),
-        r'"\1":"<redacted>"',
+        (Match match) => '"${match.group(1)}":"<redacted>"',
       ),
     );
   } finally {

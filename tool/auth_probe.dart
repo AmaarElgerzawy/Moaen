@@ -7,8 +7,11 @@
 // server's answer before the SDK has a chance to translate it.
 //
 // Usage:
-//   dart run tool/auth_probe.dart
+//   MOAEN_DB_URL=<uri> dart run tool/auth_probe.dart
 //   dart run tool/auth_probe.dart --url https://xxx.supabase.co
+//
+// With MOAEN_DB_URL it deletes the probe account on the way out. Without it the
+// account survives and the id is printed with the statement to remove it.
 //
 // Only the *publishable* key is used. It is public by design and RLS, not this
 // key, is what protects the data.
@@ -16,14 +19,26 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:postgres/postgres.dart';
+
 const String _defaultUrl = 'https://ybglobvcqgkfclvkjkri.supabase.co';
 const String _defaultKey = 'sb_publishable_qGZ3U2FHarEMD9Mtsg8mHg_eYsNswOp';
 
 /// Replaces every access/refresh token so a transcript can be pasted in an
 /// issue without handing over a live session.
-String _redact(String body) =>
-    body.replaceAll(RegExp(r'"(access_token|refresh_token)"\s*:\s*"[^"]*"'),
-        r'"\1":"<redacted>"');
+///
+/// [replaceAllMapped] rather than [replaceAll], and the reason is worth stating
+/// because it cost two attempts: `replaceAll` does **not** expand a group
+/// reference in the replacement, so `r'"$1":"<redacted>"'` — and its `\1`
+/// variant before it — are both emitted verbatim, producing `"$1":"<redacted>"`
+/// and `"\1":"<redacted>"`. The token *is* hidden either way, which is the
+/// dangerous part: the output looks redacted and correct while no longer naming
+/// the field it redacted, and a reader has no way to tell that from a genuine
+/// response. Only the mapped form substitutes the group.
+String _redact(String body) => body.replaceAllMapped(
+  RegExp(r'"(access_token|refresh_token)"\s*:\s*"[^"]*"'),
+  (Match match) => '"${match.group(1)}":"<redacted>"',
+);
 
 Future<({int status, String body})> _post(
   HttpClient client,
@@ -74,7 +89,7 @@ Future<void> main(List<String> args) async {
 
   void report(String step, int status, String body) {
     stdout.writeln('--- $step -> HTTP $status');
-    stdout.writeln(_redact(body.trim().isEmpty ? '(empty body)' : _redact(body)));
+    stdout.writeln(_redact(body.trim().isEmpty ? '(empty body)' : body));
   }
 
   try {
@@ -141,7 +156,8 @@ Future<void> main(List<String> args) async {
     report('signin', signin.status, signin.body);
 
     // 4. A deliberately wrong password, to confirm the error string the
-    //    `_messageFor` mapping keys on is still what GoTrue returns today.
+    //    mapping in `AuthRepository.reasonFor` keys on is still what GoTrue
+    //    returns today.
     final ({int status, String body}) bad = await _post(
       client,
       '$auth/token?grant_type=password',
@@ -149,7 +165,42 @@ Future<void> main(List<String> args) async {
       <String, dynamic>{'email': email, 'password': 'definitely-not-it'},
     );
     report('signin with wrong password', bad.status, bad.body);
+
+    await _removeAccount(userId);
   } finally {
     client.close(force: true);
+  }
+}
+
+/// Deletes the probe account, cascading to `public.users`.
+///
+/// A probe that leaves a real account behind is a probe that changes the thing
+/// it measures: the next run sees an extra row, and a project whose `auth.users`
+/// count is being used to reason about whether anyone has ever registered stops
+/// being evidence. Needs `MOAEN_DB_URL`, since GoTrue has no client-callable
+/// delete — an account cannot remove itself. The id is printed either way, so a
+/// skipped cleanup is actionable rather than silent.
+Future<void> _removeAccount(String userId) async {
+  final String? dbUrl = Platform.environment['MOAEN_DB_URL'];
+  if (dbUrl == null || dbUrl.isEmpty) {
+    stdout.writeln(
+      '\nMOAEN_DB_URL is not set, so the probe account was left behind. '
+      'Delete it with:\n'
+      "  delete from auth.users where id = '$userId';",
+    );
+    return;
+  }
+
+  final Connection conn = await Connection.openFromUrl(dbUrl);
+  try {
+    await conn.execute(
+      'delete from auth.users where id = \$1',
+      parameters: <Object?>[userId],
+    );
+    stdout.writeln('\nprobe account $userId removed');
+  } on ServerException catch (error) {
+    stdout.writeln('\nCOULD NOT REMOVE PROBE ACCOUNT $userId: ${error.message}');
+  } finally {
+    await conn.close();
   }
 }

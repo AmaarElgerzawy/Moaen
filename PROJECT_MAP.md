@@ -321,9 +321,19 @@ obstacle:
 | ID | Item | Action needed |
 |---|---|---|
 | **B3** | No Android emulator or device attached (`flutter doctor` lists only Windows/Chrome/Edge). Blocks the M5 smoke test. | Boot an AVD, then `flutter run`. |
-| **B4** | **The Supabase project has the Email sign-in provider switched off.** GoTrue answers `POST /auth/v1/signup` with `400 email_provider_disabled` ("Email signups are disabled") and `POST /auth/v1/token?grant_type=password` with `422 email_provider_disabled` ("Email logins are disabled"). No account can be created and none can be signed into. Nothing in the app can work around it, and the toggle is dashboard-only. | Supabase dashboard → **Authentication → Sign In / Providers → Email → Enable Email provider**. Then `flutter test test\integration\auth_live_test.dart`. |
 
-B1 (migrations unapplied) and B2 (email confirmation left on) are **resolved** —
+**B4 is resolved** (2026-09-27). The Supabase project had the Email sign-in provider
+switched off, so GoTrue answered `POST /auth/v1/signup` with
+`400 email_provider_disabled` ("Email signups are disabled") and
+`POST /auth/v1/token?grant_type=password` with `422 email_provider_disabled`
+("Email logins are disabled") — no account could be created and none could be
+signed into. Enabled in the dashboard, then confirmed end to end: sign-up creates
+the account, the `handle_new_user` trigger populates `public.users` from the
+metadata, a session is issued, the password grant succeeds, and the RLS profile
+read returns the row. **4/4 live assertions** in
+`test/integration/auth_live_test.dart`, which stays as the standing check.
+
+B1 (migrations unapplied) and B2 (email confirmation left on) are also **resolved** —
 B2 confirmed by `/auth/v1/settings` reporting `mailer_autoconfirm: true`. Sign-up
 returns a session.
 
@@ -332,8 +342,7 @@ reports every provider Supabase supports whether or not the project uses one, so
 `external.email` appearing there is **not** evidence the provider is enabled — and
 relying on it is how B4 went unnoticed. The `mailer_autoconfirm` value does come
 from project config and is genuinely confirmed. The only trustworthy signal is the
-signup response itself, which is what `test/integration/auth_live_test.dart` now
-asserts on.
+signup response itself, which is what `auth_live_test.dart` now asserts on.
 
 **B4 was mistaken for a client bug** for a specific, traceable reason: the
 `AuthException` *was* caught and logged, but `AppLogger` wrote only to a file on the
@@ -342,6 +351,8 @@ app's errors. A debug build that logs only to a file nobody can read is
 indistinguishable from one with nothing to report. Fixed here: a debug build tees to
 the console (`TeeLogWriter`), and a disabled provider is now its own reason, with
 its own sentence and its own log line.
+
+Only B3 stands between the project and M5.
 
 ### Resolved decisions
 
@@ -402,8 +413,8 @@ its own sentence and its own log line.
 | **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
 | **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 28/28 live |
-| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 136 unit/widget + 28 RLS + 3 live auth |
-| **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3 and B4** |
+| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 136 unit/widget + 28 RLS + 4 live auth |
+| **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** — the sign-in half is now proven against live GoTrue, so only the on-device part is outstanding |
 | **M6** | Client request flow | Dashboard, create form, list and detail render in both locales; create/cancel reach the database | **met** — but see B3: it has never run on a device |
 
 ## Running it
@@ -413,7 +424,7 @@ its own sentence and its own log line.
 $env:MOAEN_DB_URL = "postgresql://postgres.ybglobvcqgkfclvkjkri:<pw>@aws-0-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require"
 flutter test test\integration\rls_policies_test.dart
 
-# 2. live auth — same credential. Currently fails on B4 by design, and says so.
+# 2. live auth — same credential. Signs up through real GoTrue, then cleans up.
 flutter test test\integration\auth_live_test.dart
 
 # 3. apply a migration — the only working route to the live DB on this machine (D12)
@@ -425,7 +436,10 @@ dart run tool\auth_probe.dart
 # 5. prove the signup trigger populates public.users (rolls back, leaves no account)
 dart run tool\diagnose_signup_trigger.dart
 
-# 6. client — no flags needed
+# 6. remove any throwaway account a probe left behind
+dart run tool\cleanup_probe_accounts.dart
+
+# 7. client — no flags needed
 flutter pub get
 flutter run
 flutter test
@@ -457,6 +471,12 @@ themselves:
   symptom was reported as a missing exception, and the exception was there. A
   debug build now tees to the console. If a log is ever the only record again,
   check that it is somewhere you can read while reacting to it.
+- **`String.replaceAll` does not expand a group reference in the replacement.**
+  `replaceAll(p, r'"$1":"<redacted>"')` emits the literal `$1`; the `replaceAllMapped`
+  form is the one that substitutes the group. This is nastier than an ordinary
+  bug, because the token *is* hidden either way — the output just relabels the
+  field it redacted, so a transcript looks correct and correct-looking while
+  naming the wrong key. Found by reading the probe's own output, not by a test.
 - **`GET /auth/v1/settings` is a catalogue, not a report.** It lists every
   provider Supabase supports — email, apple, workos, kakao and the rest —
   whether or not the project has enabled any of them. Reading `external.email`
