@@ -1,0 +1,12 @@
+# Declares the tag used by the live-database suite so `--tags integration`
+# can select it without the runner warning about an unknown tag.
+#
+# The tests themselves skip when MOAEN_DB_URL is absent, which is what keeps
+# `flutter test` green for a developer with no database credentials. That
+# decision lives in the test file rather than here, so that a credential that
+# is present but wrong fails loudly instead of being silently skipped.
+#
+# Per-tag configuration only understands keys such as `skip`, `retry`,
+# `test_on` and `add_tags`, so the note is a comment.
+tags:
+  integration: {}
