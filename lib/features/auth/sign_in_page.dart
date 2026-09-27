@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../shared/utils/validators.dart';
 import '../auth/auth_controller.dart';
+import '../auth/auth_failure_localizations.dart';
 import '../auth/auth_repository.dart';
 import '../auth/user_profile.dart';
 import '../auth/user_role_localizations.dart';
@@ -86,9 +87,12 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     final AsyncValue<UserProfile?> auth = ref.watch(authControllerProvider);
     final bool busy = auth.isLoading;
     final Object? authError = auth.error;
+    // An [AuthFailure] carries a reason, and the reason is turned into a
+    // sentence here so the text is localised and translatable. Its `detail` —
+    // the server's own wording — stays in the log.
     final String? failure = switch (authError) {
       null => null,
-      final AuthFailure authFailure => authFailure.message,
+      final AuthFailure authFailure => authFailure.localizedMessage(l10n),
       // Deliberately not the raw error: an AuthException can carry a Supabase
       // message written for developers. The detail goes to the log instead.
       final Object _ => l10n.errorGeneric,

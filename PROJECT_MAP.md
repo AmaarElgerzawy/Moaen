@@ -321,10 +321,27 @@ obstacle:
 | ID | Item | Action needed |
 |---|---|---|
 | **B3** | No Android emulator or device attached (`flutter doctor` lists only Windows/Chrome/Edge). Blocks the M5 smoke test. | Boot an AVD, then `flutter run`. |
+| **B4** | **The Supabase project has the Email sign-in provider switched off.** GoTrue answers `POST /auth/v1/signup` with `400 email_provider_disabled` ("Email signups are disabled") and `POST /auth/v1/token?grant_type=password` with `422 email_provider_disabled` ("Email logins are disabled"). No account can be created and none can be signed into. Nothing in the app can work around it, and the toggle is dashboard-only. | Supabase dashboard → **Authentication → Sign In / Providers → Email → Enable Email provider**. Then `flutter test test\integration\auth_live_test.dart`. |
 
 B1 (migrations unapplied) and B2 (email confirmation left on) are **resolved** —
 B2 confirmed by `/auth/v1/settings` reporting `mailer_autoconfirm: true`. Sign-up
-now returns a session. Only B3 stands between the project and M5.
+returns a session.
+
+**Correction, 2026-09-27.** That endpoint is a *catalogue* for the provider list: it
+reports every provider Supabase supports whether or not the project uses one, so
+`external.email` appearing there is **not** evidence the provider is enabled — and
+relying on it is how B4 went unnoticed. The `mailer_autoconfirm` value does come
+from project config and is genuinely confirmed. The only trustworthy signal is the
+signup response itself, which is what `test/integration/auth_live_test.dart` now
+asserts on.
+
+**B4 was mistaken for a client bug** for a specific, traceable reason: the
+`AuthException` *was* caught and logged, but `AppLogger` wrote only to a file on the
+device, so `adb logcat` showed Flutter's own IME and inset events and none of the
+app's errors. A debug build that logs only to a file nobody can read is
+indistinguishable from one with nothing to report. Fixed here: a debug build tees to
+the console (`TeeLogWriter`), and a disabled provider is now its own reason, with
+its own sentence and its own log line.
 
 ### Resolved decisions
 
@@ -343,6 +360,7 @@ now returns a session. Only B3 stands between the project and M5.
 | D11 | **The pricing breakdown is display-only.** `price` is one column and D2 forbids a quotes table, so `CostEstimate` presents a single number rather than persisted line items. The base fee (`baseInspectionFee = 500`) is a placeholder constant in exactly one place, pending a real pricing source. Both the create form and the dashboard derive their split from that one constant, so the number a buyer approved and the number they later see cannot disagree. Every total is labelled as an estimate: a total shown without that reads as a charge that has already happened, when it is a budget the buyer stated. |
 | D12 | **Migrations are applied by `tool/apply_migration.dart`.** `supabase db push` requires `supabase link` (not linked), `psql` is not on PATH, and `supabase db reset` needs Docker. The script runs each file in one transaction via the Dart `postgres` driver, so a failure rolls back rather than leaving a half-applied schema. It depends on `tool/sql_statement_splitter.dart`, because the driver has no simple-query mode. |
 | D13 | **The dashboard leads with the buyer's *most recent* request, not their most *urgent* one.** The obvious rule — filter to open requests — is wrong for this product. The instant an inspection completes, a buyer who filtered to open would be told they have no active request and be offered to book another, and the report they paid for and travelled for would be unreachable from the screen they open first. Cancelled requests are shown for the same honesty reason. Ranking an open request above a completed one was also rejected: a buyer realistically has one live request, and an invented priority would be a product decision smuggled into a query. The card title is status-aware, because a finished report labelled "your active request" is still telling the buyer the wrong thing. |
+| D14 | **`AuthFailure` carries a reason, not a message.** It previously held an English sentence, which the sign-in banner rendered verbatim — so an Arabic build showed an English error, and nothing could be asserted about a failure except that *some* banner appeared. The repository now maps a server response to an `AuthFailureReason` and the presentation layer resolves that to a localized string. Three things follow. The repository stays free of the wording. The exact reason is a value a test can assert on and a log can record. And a *configuration* fault is distinguishable from a user error: `email_provider_disabled` is an operator mistake that no retry can clear, and presenting it as "Something went wrong. Please try again." is what made B4 look like a client bug for a day. `AuthFailure.detail` keeps the server's own wording for the log and is unreachable from the UI. The mapping matches on `AuthException.code` first — the stable contract — and falls back to message text, because GoTrue has renamed these strings across versions and an app pointed at an older server should still recognise `invalid login credentials` rather than degrade to a generic error. |
 
 ### Assumptions
 
@@ -369,7 +387,7 @@ now returns a session. Only B3 stands between the project and M5.
 | P6 | ~~Arabic UI and RTL.~~ **done** — `flutter_localizations` + ARB (`lib/l10n/arb/app_{en,ar}.arb`), Arabic default and fallback, `Directionality` resolved by `MaterialApp` and asserted in `test/core/localization_test.dart`. Android launcher label localised via `values/strings.xml` and `values-ar/strings.xml`. |
 | P7 | Notifications on status change. | No push provider selected. |
 | P8 | Inspector payouts. | Follows the D1 escrow outcome. |
-| P9 | Re-enable email confirmation for production. | Disabled for Phase 1 testing; **restore before any real launch**, since a confirmed address is the only thing standing between a typo and an account takeover. |
+| P9 | Re-enable email confirmation for production. | Disabled for Phase 1 testing; **restore before any real launch**, since a confirmed address is the only thing standing between a typo and an account takeover. Independent of B4: the provider toggle is off *now*, and autoconfirm is a separate switch to restore at launch. |
 | P10 | Normalise `city` to a reference table. | Awaits a second consumer (A5/A2). |
 | P11 | **Release signing is unverified.** `flutter build apk --release` with no `key.properties` falls back to debug keys. A real keystore is required before distribution, and the build will look successful right up until it matters. |
 | P12 | **No screen has been seen on a real device** (B3). The RTL work is asserted from laid-out geometry rather than from a screenshot, which catches a number on the wrong edge but cannot catch a font that renders Arabic as boxes. | Needs an emulator. |
@@ -384,8 +402,8 @@ now returns a session. Only B3 stands between the project and M5.
 | **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
 | **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 28/28 live |
-| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 115 unit/widget + 28 integration |
-| **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** |
+| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 136 unit/widget + 28 RLS + 3 live auth |
+| **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3 and B4** |
 | **M6** | Client request flow | Dashboard, create form, list and detail render in both locales; create/cancel reach the database | **met** — but see B3: it has never run on a device |
 
 ## Running it
@@ -395,19 +413,32 @@ now returns a session. Only B3 stands between the project and M5.
 $env:MOAEN_DB_URL = "postgresql://postgres.ybglobvcqgkfclvkjkri:<pw>@aws-0-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require"
 flutter test test\integration\rls_policies_test.dart
 
-# 2. apply a migration — the only working route to the live DB on this machine (D12)
+# 2. live auth — same credential. Currently fails on B4 by design, and says so.
+flutter test test\integration\auth_live_test.dart
+
+# 3. apply a migration — the only working route to the live DB on this machine (D12)
 dart run tool\apply_migration.dart supabase\migrations\000N.sql
 
-# 3. client — no flags needed
+# 4. diagnose auth without a device — the symptom in one command
+dart run tool\auth_probe.dart
+
+# 5. prove the signup trigger populates public.users (rolls back, leaves no account)
+dart run tool\diagnose_signup_trigger.dart
+
+# 6. client — no flags needed
 flutter pub get
 flutter run
 flutter test
 ```
 
-`flutter test` on its own reports 115 passing and 28 skipped: the RLS suite skips
-itself when `MOAEN_DB_URL` is absent, so a developer with no database credential
-still gets a useful signal. A credential that is *present but wrong* is not
-skipped — it fails loudly.
+`flutter test` on its own reports 136 passing and 31 skipped: the RLS and live-auth
+suites skip themselves when `MOAEN_DB_URL` is absent, so a developer with no database
+credential still gets a useful signal. A credential that is *present but wrong* is
+not skipped — it fails loudly.
+
+The live auth suite needs the gate for a stronger reason than the RLS one: it reaches
+the network as well as the database, so without it a bare `flutter test` would make
+real sign-up attempts — and against a healthy project, would create real accounts.
 
 A bare `flutter run` is enough (D6): debug builds fall back to the development
 project. To point a build somewhere else, override with `--dart-define` or
@@ -420,6 +451,18 @@ states the backend the app actually reached.
 Recorded because each one cost a debugging cycle, and none of them announce
 themselves:
 
+- **A file log is not a diagnostic.** `AppLogger` wrote only to the device, so
+  `adb logcat` showed Flutter's IME and inset events and none of the app's
+  errors — which is exactly what "there was no error" also looks like. The
+  symptom was reported as a missing exception, and the exception was there. A
+  debug build now tees to the console. If a log is ever the only record again,
+  check that it is somewhere you can read while reacting to it.
+- **`GET /auth/v1/settings` is a catalogue, not a report.** It lists every
+  provider Supabase supports — email, apple, workos, kakao and the rest —
+  whether or not the project has enabled any of them. Reading `external.email`
+  there as "email login is on" is wrong, and it is what hid B4. The
+  `mailer_autoconfirm` field *is* real config. To learn whether a provider is
+  enabled, ask the endpoint that uses it.
 - **The default test surface is 800×600 and a `ListView` only builds what is near
   the viewport.** A submit button below the fold is not merely invisible — it is
   absent from the tree, so `find` reports zero candidates and the failure reads as

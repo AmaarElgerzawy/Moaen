@@ -38,6 +38,17 @@
 
   "errorGeneric": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
 
+  "authErrorInvalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+  "authErrorEmailNotConfirmed": "يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.",
+  "authErrorAlreadyRegistered": "يوجد حساب مسجّل بهذا البريد الإلكتروني بالفعل.",
+  "authErrorSignupsDisabled": "إنشاء الحسابات الجديدة مغلق حاليًا.",
+  "authErrorProviderDisabled": "تسجيل الدخول غير متاح حاليًا. يرجى المحاولة لاحقًا.",
+  "authErrorRateLimited": "محاولات كثيرة خلال وقت قصير. يرجى الانتظار قليلًا ثم المحاولة.",
+  "authErrorProfileUnavailable": "تم تسجيل الدخول، لكن تعذّر تحميل ملفك الشخصي. يرجى المحاولة مرة أخرى.",
+  "authErrorNoAccount": "لم يتم إتمام العملية. يرجى المحاولة مرة أخرى.",
+  "authErrorConfirmEmail": "تم إنشاء الحساب. راجع بريدك الإلكتروني لتأكيد العنوان، ثم سجّل الدخول.",
+  "authErrorSignOutFailed": "تعذّر تسجيل الخروج. يرجى المحاولة مرة أخرى.",
+
   "detailEmail": "البريد الإلكتروني",
   "detailPhone": "الهاتف",
   "detailServiceCity": "مدينة الخدمة",

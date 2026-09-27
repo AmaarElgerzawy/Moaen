@@ -151,4 +151,41 @@ void main() {
     expect(sink, hasLength(1));
     expect(ticking.buffered, 0);
   });
+
+  group('TeeLogWriter', () {
+    test('a batch reaches both sinks', () async {
+      final List<String> file = <String>[];
+      final List<String> console = <String>[];
+
+      await TeeLogWriter(_recordingSink(file), _recordingSink(console))(
+        <String>['one', 'two'],
+      );
+
+      expect(file, <String>['one', 'two']);
+      expect(console, <String>['one', 'two']);
+    });
+
+    // A console tee that takes the file down with it would reintroduce the
+    // problem it exists to solve, in reverse: the one sink that always works
+    // would be the one that gets dropped.
+    test('a failing sink does not stop the other', () async {
+      final List<String> file = <String>[];
+
+      await TeeLogWriter(_recordingSink(file), (List<String> _) async {
+        throw StateError('console unavailable');
+      })(<String>['kept']);
+
+      expect(file, <String>['kept']);
+    });
+
+    test('a failing primary still lets the batch reach the console', () async {
+      final List<String> console = <String>[];
+
+      await TeeLogWriter((List<String> _) async {
+        throw const FileSystemException('disk full');
+      }, _recordingSink(console))(<String>['kept']);
+
+      expect(console, <String>['kept']);
+    });
+  });
 }

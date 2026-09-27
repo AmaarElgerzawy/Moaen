@@ -39,7 +39,9 @@ class FakeAuthRepository extends AuthRepository {
   Future<UserProfile> loadProfile(String userId) async {
     profileLoads++;
     final UserProfile? value = profile;
-    if (value == null) throw const AuthFailure('Profile unavailable.');
+    if (value == null) {
+      throw const AuthFailure(AuthFailureReason.profileUnavailable);
+    }
     return value;
   }
 
@@ -273,7 +275,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final FakeAuthRepository repository = FakeAuthRepository(
-        failure: const AuthFailure('Incorrect email or password.'),
+        failure: const AuthFailure(AuthFailureReason.invalidCredentials),
       );
       await tester.pumpWidget(_app(repository));
       await tester.pumpAndSettle();
@@ -288,6 +290,66 @@ void main() {
 
       expect(find.text('Incorrect email or password.'), findsOneWidget);
       expect(find.byType(RoleLandingPage), findsNothing);
+    });
+
+    // The failure that was hardest to diagnose. GoTrue answers a disabled
+    // provider with 400 "Email signups are disabled" on sign-up and 422 "Email
+    // logins are disabled" on the password grant, and before this reason existed
+    // both fell through to the generic sentence — so an operator error reached
+    // the user as "Something went wrong. Please try again." while the whole app
+    // was unusable. It now has its own sentence and its own log line.
+    testWidgets('a disabled auth provider says so instead of "try again"', (
+      WidgetTester tester,
+    ) async {
+      final FakeAuthRepository repository = FakeAuthRepository(
+        failure: const AuthFailure(AuthFailureReason.providerDisabled),
+      );
+      await tester.pumpWidget(_app(repository));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'nadia@example.com',
+      );
+      await tester.enterText(find.byType(TextFormField).last, 'password123');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Signing in is unavailable right now. Please try again later.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Something went wrong. Please try again.'),
+        findsNothing,
+        reason: 'a configuration fault must not read as a transient error',
+      );
+    });
+
+    // The server's own wording is the one thing that identifies the fault
+    // precisely, and it must not be rendered. It is kept on the failure for the
+    // log.
+    testWidgets('the server detail is never shown to the user', (
+      WidgetTester tester,
+    ) async {
+      final FakeAuthRepository repository = FakeAuthRepository(
+        failure: const AuthFailure(
+          AuthFailureReason.providerDisabled,
+          detail: 'Email logins are disabled',
+        ),
+      );
+      await tester.pumpWidget(_app(repository));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'nadia@example.com',
+      );
+      await tester.enterText(find.byType(TextFormField).last, 'password123');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Email logins are disabled'), findsNothing);
     });
 
     testWidgets('reaching the register form reveals the role and city fields', (

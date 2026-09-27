@@ -172,6 +172,37 @@ class AppLogger {
   static Future<void> _discard(List<String> lines) async {}
 }
 
+/// Forwards each batch to two sinks, in order.
+///
+/// Exists because a file-only sink makes a debug build indistinguishable from a
+/// silent one: `adb logcat` shows the framework's own chatter and none of the
+/// app's errors, which reads exactly like there being no error to find. The
+/// console half is what makes a logged failure visible while it is being
+/// diagnosed.
+///
+/// The two halves are independent. A console that throws must not cost the
+/// lines that are already on their way to disk, and a disk that is full must
+/// not stop them reaching the console — which is the case this is built for.
+class TeeLogWriter {
+  TeeLogWriter(this.primary, this.secondary);
+
+  final LogWriter primary;
+  final LogWriter secondary;
+
+  Future<void> call(List<String> lines) async {
+    await _guard(primary, lines);
+    await _guard(secondary, lines);
+  }
+
+  static Future<void> _guard(LogWriter writer, List<String> lines) async {
+    try {
+      await writer(lines);
+    } catch (_) {
+      // A failing half is not allowed to take the other one down with it.
+    }
+  }
+}
+
 /// Appends batches to a log file, rotating at [maxBytes].
 ///
 /// Written against the [LogWriter] function type rather than implementing it as

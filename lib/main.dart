@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -63,13 +64,35 @@ Future<void> main() async {
 /// Points the logger at a real file. A failure here is not fatal: an in-memory
 /// logger is still useful, and refusing to start over a log file would be the
 /// wrong trade.
+///
+/// A debug build additionally tees to the console, because a log file on the
+/// device is not something you can read while reacting to a failure on it. See
+/// [TeeLogWriter].
 Future<void> _installFileLogger() async {
   try {
     final RollingFileLogWriter writer =
         await RollingFileLogWriter.inAppSupportDirectory();
-    AppLogger.instance.useWriter(writer.call);
+    AppLogger.instance.useWriter(
+      kDebugMode
+          ? TeeLogWriter(writer.call, _consoleLog).call
+          : writer.call,
+    );
   } catch (error) {
     debugPrint('file logging unavailable, continuing in memory: $error');
+    // Losing the file must not lose the console, or a debug build on a device
+    // with no writable storage has no diagnostics at all.
+    if (kDebugMode) AppLogger.instance.useWriter(_consoleLog);
+  }
+}
+
+/// Mirrors log lines into the Flutter console, and from there into logcat.
+///
+/// `debugPrint` rather than `print`: it routes through the framework's print
+/// suppression, so log lines are truncated to fit a frame instead of being
+/// written straight to stdout.
+Future<void> _consoleLog(List<String> lines) async {
+  for (final String line in lines) {
+    debugPrint(line);
   }
 }
 

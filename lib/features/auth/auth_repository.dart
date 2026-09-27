@@ -1,20 +1,80 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/logging/app_logger.dart';
 import 'user_profile.dart';
 
+/// Why an authentication attempt was refused.
+///
+/// A reason rather than a message. [AuthFailure.message] is resolved from the
+/// localisation tables by the presentation layer, which is what keeps the
+/// repository free of any dependency on the words — and means an Arabic build
+/// shows an Arabic sentence instead of the English one that used to be baked
+/// in here. The value is also what a test can assert on, and what the log
+/// records, so "the banner said *something*" never stands in for knowing *what*
+/// went wrong.
+enum AuthFailureReason {
+  /// The email/password pair did not match an account.
+  invalidCredentials,
+
+  /// The address exists but has not been confirmed.
+  emailNotConfirmed,
+
+  /// Sign-up was refused because the address is already registered.
+  alreadyRegistered,
+
+  /// New accounts are closed. A server-side setting, not a user error.
+  signupsDisabled,
+
+  /// The sign-in method itself is switched off on the server.
+  ///
+  /// Distinct from [signupsDisabled] on purpose. `email_provider_disabled` is
+  /// GoTrue's response when the *provider* is off, and it is returned by the
+  /// password grant as well as by sign-up — so it reads as "sign-in is broken"
+  /// rather than "registration is closed", and treating the two alike would
+  /// send an existing user looking for a support page about new accounts.
+  providerDisabled,
+
+  /// Too many attempts in too short a time.
+  rateLimited,
+
+  /// Auth succeeded but the `public.users` row could not be read.
+  profileUnavailable,
+
+  /// The server accepted the request and returned no account.
+  noAccountReturned,
+
+  /// The account exists but sign-in will not work until the address is
+  /// confirmed.
+  confirmationRequired,
+
+  /// Signing out failed.
+  signOutFailed,
+
+  /// Refused for a reason the app does not model.
+  ///
+  /// The underlying `AuthException.code` is kept in [AuthFailure.detail] and
+  /// logged, so this is an honest "unrecognised" rather than a swallowed
+  /// detail. Anything landing here during a smoke test is worth adding.
+  unrecognised,
+}
+
 /// A failure that is safe to show to the user.
 ///
-/// [AuthException.message] from the server is not shown verbatim: it can carry
-/// internal detail, and in the case of a disabled sign-up it reads like a bug
+/// [AuthException.message] from the server is never shown verbatim: it can carry
+/// internal detail, and in the case of a disabled provider it reads like a bug
 /// rather than a product state. The original is logged, not displayed.
 class AuthFailure implements Exception {
-  const AuthFailure(this.message);
+  const AuthFailure(this.reason, {this.detail});
 
-  final String message;
+  final AuthFailureReason reason;
+
+  /// The server's own wording, for the log only. Never rendered.
+  final String? detail;
 
   @override
-  String toString() => message;
+  String toString() =>
+      detail == null ? 'AuthFailure(${reason.name})' : 'AuthFailure(${reason.name}): $detail';
 }
 
 /// All authentication and profile reads go through here.
@@ -57,17 +117,15 @@ class AuthRepository {
 
       final User? user = response.user;
       if (user == null) {
-        throw const AuthFailure('Sign-in succeeded but returned no account.');
+        throw AuthFailure(AuthFailureReason.noAccountReturned, detail: 'sign-in');
       }
       return await loadProfile(user.id);
     } on AuthException catch (error, stackTrace) {
-      AppLogger.instance.error('sign-in failed', error, stackTrace, {'email': email});
-      throw AuthFailure(_messageFor(error));
+      _logAuthFailure('sign-in failed', error, stackTrace, email: email);
+      throw AuthFailure(reasonFor(error), detail: error.message);
     } on PostgrestException catch (error, stackTrace) {
       AppLogger.instance.error('profile load failed', error, stackTrace);
-      throw const AuthFailure(
-        'Signed in, but your profile could not be loaded. Please try again.',
-      );
+      throw const AuthFailure(AuthFailureReason.profileUnavailable);
     }
   }
 
@@ -87,7 +145,7 @@ class AuthRepository {
     String? city,
   }) async {
     if (role == UserRole.admin) {
-      throw const AuthFailure('Administrator accounts cannot be self-registered.');
+      throw const AuthFailure(AuthFailureReason.signupsDisabled);
     }
 
     try {
@@ -104,18 +162,15 @@ class AuthRepository {
 
       final User? user = response.user;
       if (user == null) {
-        throw const AuthFailure('Registration failed. Please try again.');
+        throw const AuthFailure(AuthFailureReason.noAccountReturned);
       }
       if (response.session == null) {
-        throw const AuthFailure(
-          'Account created. Check your email to confirm the address, '
-          'then sign in.',
-        );
+        throw const AuthFailure(AuthFailureReason.confirmationRequired);
       }
       return await loadProfile(user.id);
     } on AuthException catch (error, stackTrace) {
-      AppLogger.instance.error('sign-up failed', error, stackTrace, {'email': email});
-      throw AuthFailure(_messageFor(error));
+      _logAuthFailure('sign-up failed', error, stackTrace, email: email);
+      throw AuthFailure(reasonFor(error), detail: error.message);
     }
   }
 
@@ -123,32 +178,108 @@ class AuthRepository {
     try {
       await _client.auth.signOut();
     } on AuthException catch (error, stackTrace) {
-      AppLogger.instance.error('sign-out failed', error, stackTrace);
-      throw const AuthFailure('Could not sign out. Please try again.');
+      _logAuthFailure('sign-out failed', error, stackTrace);
+      throw const AuthFailure(AuthFailureReason.signOutFailed);
     }
   }
 
-  /// Maps a server auth error onto something a person can act on.
-  String _messageFor(AuthException error) {
-    AppLogger.instance.debug('auth error detail', {'raw': error.message});
+  /// Records an auth failure with the fields that actually identify it.
+  ///
+  /// [AuthException.code] is the one that matters: `error.message` is prose
+  /// GoTrue is free to reword between releases, whereas the code is a stable
+  /// contract, and for the failure that is hardest to diagnose from a screen —
+  /// a provider that is simply switched off — the code is the only thing that
+  /// says so. Logging `message` alone gives "Email logins are disabled" with no
+  /// way to tell a misconfigured server from a typo.
+  ///
+  /// The email is logged alongside because a signup that fails for every user
+  /// and one that fails for a single address look identical without it. It is a
+  /// user's own address, in a file only the app can read.
+  void _logAuthFailure(
+    String message,
+    AuthException error,
+    StackTrace stackTrace, {
+    String? email,
+  }) {
+    AppLogger.instance.error(
+      message,
+      error,
+      stackTrace,
+      <String, Object?>{
+        'email': ?email,
+        'code': error.code,
+        'status': error.statusCode,
+        'detail': error.message,
+      },
+    );
+
+    // A disabled provider is an operator error, not a user one, and no amount of
+    // retrying will clear it. Escalated so it is distinguishable in the file
+    // from the ordinary wrong-password noise.
+    if (error.code == 'email_provider_disabled' ||
+        error.code == 'sms_provider_disabled') {
+      AppLogger.instance.error(
+        'auth provider is disabled on the server: enable it in the Supabase '
+        'dashboard under Authentication → Providers. No app change can work '
+        'around this, and nothing was sent to a server that can accept it.',
+      );
+    }
+  }
+
+  /// Maps a server auth error onto a reason the app can act on.
+  ///
+  /// Matched on [AuthException.code] first because it is the stable contract,
+  /// then on message text. The fallback is deliberate rather than redundant:
+  /// GoTrue has renamed several of these strings across versions, and an app
+  /// that has just been pointed at an older server should still recognise
+  /// `invalid login credentials` rather than degrade to [AuthFailureReason
+  /// .unrecognised] and tell the user to try again.
+  @visibleForTesting
+  static AuthFailureReason reasonFor(AuthException error) {
+    switch (error.code) {
+      case 'email_provider_disabled':
+      case 'sms_provider_disabled':
+        return AuthFailureReason.providerDisabled;
+      case 'invalid_credentials':
+        return AuthFailureReason.invalidCredentials;
+      case 'email_not_confirmed':
+        return AuthFailureReason.emailNotConfirmed;
+      case 'user_already_exists':
+        return AuthFailureReason.alreadyRegistered;
+      case 'signup_disabled':
+        return AuthFailureReason.signupsDisabled;
+      // One reason for all three: whether the caller was throttled generally or
+      // on a single channel, the advice to the user is identical — wait.
+      case 'over_request_rate_limit':
+      case 'over_email_send_rate_limit':
+      case 'over_sms_send_rate_limit':
+        return AuthFailureReason.rateLimited;
+    }
 
     final String detail = error.message.toLowerCase();
+    if (detail.contains('email') &&
+        (detail.contains('disabled') || detail.contains('not enabled'))) {
+      return AuthFailureReason.providerDisabled;
+    }
     if (detail.contains('invalid login credentials')) {
-      return 'Incorrect email or password.';
+      return AuthFailureReason.invalidCredentials;
     }
     if (detail.contains('email not confirmed')) {
-      return 'Confirm your email address before signing in.';
+      return AuthFailureReason.emailNotConfirmed;
     }
     if (detail.contains('already registered') ||
         detail.contains('already been registered')) {
-      return 'An account with this email already exists.';
+      return AuthFailureReason.alreadyRegistered;
     }
     if (detail.contains('signups not allowed')) {
-      return 'Registration is currently closed.';
+      return AuthFailureReason.signupsDisabled;
     }
-    if (detail.contains('rate limit')) {
-      return 'Too many attempts. Please wait a moment and try again.';
+    // Matches "rate limit" and "too many requests": the throttle message does
+    // not reliably use the words the code does, so a prose-only match misses
+    // the most common shape of this error.
+    if (detail.contains('rate limit') || detail.contains('too many requests')) {
+      return AuthFailureReason.rateLimited;
     }
-    return 'Something went wrong while signing in. Please try again.';
+    return AuthFailureReason.unrecognised;
   }
 }
