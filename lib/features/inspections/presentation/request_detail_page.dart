@@ -65,33 +65,33 @@ class RequestDetailPage extends ConsumerWidget {
               const SizedBox(height: AppSpacing.sm),
               StatusChip(status: match.status),
               const SizedBox(height: AppSpacing.lg),
-              _Card(
+              DetailCard(
                 title: l10n.createSectionVehicle,
                 children: <Widget>[
-                  _Row(label: l10n.fieldCarMake, value: match.carMake),
-                  _Row(label: l10n.fieldCarModel, value: match.carModel),
-                  _Row(label: l10n.fieldCarYear, value: '${match.carYear}'),
+                  DetailRow(label: l10n.fieldCarMake, value: match.carMake),
+                  DetailRow(label: l10n.fieldCarModel, value: match.carModel),
+                  DetailRow(label: l10n.fieldCarYear, value: '${match.carYear}'),
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
-              _Card(
+              DetailCard(
                 title: l10n.createSectionSeller,
                 children: <Widget>[
-                  _Row(label: l10n.fieldSellerPhone, value: match.sellerPhone),
-                  _Row(
+                  DetailRow(label: l10n.fieldSellerPhone, value: match.sellerPhone),
+                  DetailRow(
                     label: l10n.fieldSellerAddress,
                     value: match.sellerLocationAddress,
                   ),
-                  _Row(label: l10n.fieldCity, value: match.city),
+                  DetailRow(label: l10n.fieldCity, value: match.city),
                   if (match.inspectionCenterName case final String name
                       when name.isNotEmpty)
-                    _Row(label: l10n.fieldInspectionCentre, value: name),
+                    DetailRow(label: l10n.fieldInspectionCentre, value: name),
                 ],
               ),
               if (match.clientNotes case final String notes
                   when notes.trim().isNotEmpty) ...<Widget>[
                 const SizedBox(height: AppSpacing.lg),
-                _Card(
+                DetailCard(
                   title: l10n.createSectionNotes,
                   children: <Widget>[
                     Text(notes, style: Theme.of(context).textTheme.bodyMedium),
@@ -99,14 +99,14 @@ class RequestDetailPage extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: AppSpacing.lg),
-              _Card(
+              DetailCard(
                 title: l10n.costTitle,
                 children: <Widget>[
-                  _Row(
+                  DetailRow(
                     label: l10n.costInspection,
                     value: CostEstimate.format(match.price),
                   ),
-                  _Row(label: l10n.costTotal, value: CostEstimate.format(
+                  DetailRow(label: l10n.costTotal, value: CostEstimate.format(
                     match.price,
                   ), emphasise: true),
                   const SizedBox(height: AppSpacing.xs),
@@ -189,74 +189,5 @@ class RequestDetailPage extends ConsumerWidget {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.title, required this.children});
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              title,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.value, this.emphasise = false});
-
-  final String label;
-  final String value;
-  final bool emphasise;
-
-  @override
-  Widget build(BuildContext context) {
-    final TextTheme text = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: text.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: emphasise
-                  ? text.titleSmall?.copyWith(fontWeight: FontWeight.w800)
-                  : text.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

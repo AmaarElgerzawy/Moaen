@@ -10,7 +10,9 @@ import 'package:moaen/features/auth/sign_in_page.dart';
 import 'package:moaen/features/auth/user_profile.dart';
 import 'package:moaen/features/home/role_landing_page.dart';
 import 'package:moaen/features/inspections/application/inspection_controller.dart';
+import 'package:moaen/features/inspections/domain/inspection_request.dart';
 import 'package:moaen/features/inspections/presentation/client_dashboard_page.dart';
+import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
 
 import '../../support/test_client.dart';
 
@@ -93,6 +95,12 @@ Widget _app(FakeAuthRepository repository) => ProviderScope(
     // client, which would attempt a real request and leave an unresolved
     // future in the test. Null is the honest "no active request" state.
     dashboardRequestProvider.overrideWith((Ref ref) async => null),
+    // An inspector lands on the inspector home, which reads the board and the
+    // inspector's jobs. Both are straightforward reads that would otherwise
+    // attempt a real request, so they are overridden with the honest empty
+    // states.
+    jobBoardProvider.overrideWith((Ref ref) async => const <InspectionRequest>[]),
+    myJobsProvider.overrideWith((Ref ref) async => const <InspectionRequest>[]),
   ],
   child: const MoaenApp(),
 );
@@ -195,7 +203,7 @@ void main() {
       expect(find.byType(SignInPage), findsNothing);
     });
 
-    testWidgets('a restored inspector session lands on the role screen (O1)', (
+    testWidgets('a restored inspector session lands on the inspector home (O1)', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -208,12 +216,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The inspector half of O1 is unchanged: there is no inspector screen in
-      // this phase, so the role screen is still their destination. The client's
-      // is not, and a test that asserted one destination for both roles would
-      // have passed right up until the dashboard existed.
-      expect(find.byType(RoleLandingPage), findsOneWidget);
+      // The inspector half of O1: inspectors now have a real home of their own
+      // (board, jobs, profile), so the role screen is no longer their
+      // destination. The client's is not either, and a test that asserted one
+      // destination for both roles would have passed right up until the
+      // dashboard existed.
+      expect(find.byType(InspectorHomePage), findsOneWidget);
       expect(find.byType(ClientDashboardPage), findsNothing);
+      expect(find.byType(RoleLandingPage), findsNothing);
       expect(find.byType(SignInPage), findsNothing);
     });
 
@@ -245,6 +255,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // The board greets with the service city even when it is empty.
+      expect(find.textContaining('Alexandria'), findsOneWidget);
+
+      await tester.tap(find.text('Profile'));
+      await tester.pumpAndSettle();
+
+      // The profile tab, like the old role screen, shows the role and the
+      // service city the buyer-facing side of the app shows when hiring.
       expect(find.text('Inspector'), findsOneWidget);
       expect(find.text('Alexandria'), findsOneWidget);
     });

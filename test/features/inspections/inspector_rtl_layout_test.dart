@@ -1,0 +1,213 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:moaen/core/localization/locale_provider.dart';
+import 'package:moaen/core/theme/app_theme.dart';
+import 'package:moaen/features/auth/auth_controller.dart';
+import 'package:moaen/features/auth/user_profile.dart';
+import 'package:moaen/features/inspections/application/inspection_controller.dart';
+import 'package:moaen/features/inspections/domain/inspection_request.dart';
+import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
+import 'package:moaen/features/inspections/presentation/inspector_job_detail_page.dart';
+import 'package:moaen/l10n/gen/app_localizations.dart';
+
+import '../../support/fake_inspection_repository.dart';
+
+/// Layout assertions for the inspector screens under the Arabic, right-to-left
+/// presentation — the mirror of `rtl_layout_test.dart` but for the inspector
+/// side, with an inspector profile so the board header and the profile tab can
+/// show the city the screens really run with.
+///
+/// Expected strings come from [AppLocalizations] rather than typed Arabic
+/// literals, for the reasons stated in the client RTL test.
+const UserProfile _signedInInspector = UserProfile(
+  id: 'inspector-1',
+  fullName: 'كريم عادل',
+  email: 'karim@example.com',
+  role: UserRole.inspector,
+  locationCity: 'Cairo',
+  rating: 0,
+);
+
+class _StubAuthController extends AuthController {
+  @override
+  Future<UserProfile?> build() async => _signedInInspector;
+}
+
+/// Arabic script block, inclusive — reused here so a string can be asserted to
+/// *be* Arabic rather than merely to match an expected glyph sequence.
+final RegExp _arabicScript = RegExp(r'[\u0600-\u06FF]');
+
+/// A repo holding one pending request in the inspector's city, so the board and
+/// the detail have real content to lay out.
+FakeInspectionRepository _withOneBoardRequest() => FakeInspectionRepository(
+  requests: <InspectionRequest>[
+    buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Cairo'),
+  ],
+);
+
+Widget _arabic(FakeInspectionRepository repository, Widget child) =>
+    ProviderScope(
+      overrides: [
+        inspectionRepositoryProvider.overrideWithValue(repository),
+        authControllerProvider.overrideWith(_StubAuthController.new),
+        localeProvider.overrideWithValue(const Locale('ar')),
+      ],
+      child: MaterialApp(
+        locale: const Locale('ar'),
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        // No explicit `Directionality` wrapper: `MaterialApp` with an Arabic
+        // locale supplies it, and a wrapper would mask a screen that broke the
+        // direction for itself.
+        home: child,
+      ),
+    );
+
+Widget _english(FakeInspectionRepository repository, Widget child) =>
+    ProviderScope(
+      overrides: [
+        inspectionRepositoryProvider.overrideWithValue(repository),
+        authControllerProvider.overrideWith(_StubAuthController.new),
+        localeProvider.overrideWithValue(const Locale('en')),
+      ],
+      child: MaterialApp(
+        locale: const Locale('en'),
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: child,
+      ),
+    );
+
+Future<void> _pump(WidgetTester tester, Widget app) async {
+  tester.view.devicePixelRatio = 1.0;
+  tester.view.physicalSize = const Size(420, 1600);
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(app);
+  await tester.pumpAndSettle();
+}
+
+AppLocalizations _l10nOf(WidgetTester tester) =>
+    AppLocalizations.of(tester.element(find.byType(Scaffold).first));
+
+void main() {
+  group('direction resolution', () {
+    testWidgets('every inspector screen resolves to RTL in Arabic', (
+      WidgetTester tester,
+    ) async {
+      for (final Widget page in <Widget>[
+        const InspectorHomePage(),
+        const InspectorJobDetailPage(id: 'avail-1'),
+      ]) {
+        await _pump(tester, _arabic(_withOneBoardRequest(), page));
+
+        final BuildContext context = tester.element(find.byType(Scaffold).first);
+        expect(
+          Directionality.of(context),
+          TextDirection.rtl,
+          reason: '${page.runtimeType} did not resolve to RTL',
+        );
+      }
+    });
+
+    testWidgets('the same screens resolve to LTR in English', (
+      WidgetTester tester,
+    ) async {
+      for (final Widget page in <Widget>[
+        const InspectorHomePage(),
+        const InspectorJobDetailPage(id: 'avail-1'),
+      ]) {
+        await _pump(tester, _english(_withOneBoardRequest(), page));
+
+        expect(
+          Directionality.of(tester.element(find.byType(Scaffold).first)),
+          TextDirection.ltr,
+          reason: '${page.runtimeType} did not resolve to LTR',
+        );
+      }
+    });
+  });
+
+  group('the action belongs to the whole request', () {
+    testWidgets('spans the detail width under RTL', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        _arabic(_withOneBoardRequest(), const InspectorJobDetailPage(id: 'avail-1')),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      final Rect action = tester.getRect(
+        find.widgetWithText(FilledButton, l10n.actionAccept),
+      );
+      final Rect card = tester.getRect(
+        find.widgetWithText(Card, l10n.createSectionVehicle),
+      );
+
+      // A lone action is not a column of a form: it should span the same width
+      // as the detail content it belongs to.
+      expect(
+        (action.width - card.width).abs(),
+        lessThan(card.width * 0.05),
+        reason: 'the accept action must span the detail content width',
+      );
+    });
+  });
+
+  group('the inspector chrome is Arabic', () {
+    testWidgets('the board greets in Arabic and names the service city', (
+      WidgetTester tester,
+    ) async {
+      await _pump(tester, _arabic(_withOneBoardRequest(), const InspectorHomePage()));
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      expect(find.text(l10n.boardTitle('Cairo')), findsOneWidget);
+      expect(
+        _arabicScript.hasMatch(l10n.boardTitle('Cairo')),
+        isTrue,
+        reason: 'the Arabic bundle must not be serving English',
+      );
+      expect(find.text('Available in Cairo'), findsNothing);
+    });
+
+    testWidgets('the navigation destinations are localized', (
+      WidgetTester tester,
+    ) async {
+      await _pump(tester, _arabic(_withOneBoardRequest(), const InspectorHomePage()));
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      // Read inside the `NavigationBar` specifically: the selected tab's label
+      // also appears as the AppBar title, so a screen-wide finder would count
+      // both and turn a passing localization into a false failure.
+      Finder inNav(String label) => find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text(label),
+      );
+
+      expect(inNav(l10n.navJobBoard), findsOneWidget);
+      expect(inNav(l10n.navMyJobs), findsOneWidget);
+      expect(inNav(l10n.navProfile), findsOneWidget);
+      expect(inNav('Job board'), findsNothing);
+      expect(inNav('My jobs'), findsNothing);
+      expect(inNav('Profile'), findsNothing);
+    });
+
+    testWidgets('the detail labels the pending state and its action in Arabic', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        _arabic(_withOneBoardRequest(), const InspectorJobDetailPage(id: 'avail-1')),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      expect(find.text(l10n.inspectorAvailableNote), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, l10n.actionAccept), findsOneWidget);
+      expect(find.text('Accept inspection'), findsNothing);
+      expect(_arabicScript.hasMatch(l10n.actionAccept), isTrue);
+    });
+  });
+}

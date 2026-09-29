@@ -37,6 +37,41 @@ final dashboardRequestProvider = FutureProvider<InspectionRequest?>((Ref ref) {
   return ref.watch(inspectionRepositoryProvider).latestForClient();
 });
 
+/// The inspector's job board: pending requests in their city, newest first.
+///
+/// Watches [authControllerProvider] the same way [myRequestsProvider] does, so a
+/// sign-out cannot leave the previous inspector's board on screen. It takes no
+/// user id because RLS decides which city's requests are visible; see
+/// [InspectionRepository.listBoard].
+final jobBoardProvider = FutureProvider<List<InspectionRequest>>((Ref ref) async {
+  ref.watch(authControllerProvider);
+  return ref.watch(inspectionRepositoryProvider).listBoard();
+});
+
+/// The signed-in inspector's own jobs, newest first.
+///
+/// This one has to wait for the profile: the repository narrows on
+/// `inspector_id`, because the participant RLS policy cannot tell which side of
+/// a request the caller was. See [InspectionRepository.listForInspector].
+final myJobsProvider = FutureProvider<List<InspectionRequest>>((Ref ref) async {
+  final UserProfile? profile = await ref.watch(authControllerProvider.future);
+  if (profile == null) return const <InspectionRequest>[];
+  return ref.watch(inspectionRepositoryProvider).listForInspector(profile.id);
+});
+
+/// One request, as the inspector's detail page sees it.
+///
+/// A family rather than a cache hit off a list, because the inspector can reach
+/// a job from either the board or their jobs list, and neither list reliably
+/// holds a row that is now on the *other* list (accepting moves a request
+/// between them). Fetching by id also lets an action invalidate just this row so
+/// the page shows the post-transition status without refetching both lists.
+final inspectorJobProvider =
+    FutureProvider.family<InspectionRequest, String>((Ref ref, String id) {
+      ref.watch(authControllerProvider);
+      return ref.watch(inspectionRepositoryProvider).byId(id);
+    });
+
 /// The id the repository writes under.
 ///
 /// Awaits the auth provider's *future* rather than reading `.value`, and that
@@ -110,6 +145,53 @@ class InspectionRequestController extends Notifier<AsyncValue<void>> {
       state = AsyncError(error, stackTrace);
       rethrow;
     }
+  }
+
+  /// The three inspector status writes share one shape: run the transition,
+  /// then let every index that can show the request refetch so its new status
+  /// is everywhere immediately. Invalidation rather than optimistic updates,
+  /// for the same reason as [create] — the trigger is what decides the
+  /// transition is legal, so the database's answer is the only truthful one.
+  ///
+  /// Throws on failure, like [cancel], recording the error in [state] as well.
+  Future<void> _transition(
+    Future<void> Function() write,
+    String id,
+  ) async {
+    state = const AsyncLoading();
+    try {
+      await write();
+      state = const AsyncData(null);
+      ref.invalidate(jobBoardProvider);
+      ref.invalidate(myJobsProvider);
+      ref.invalidate(inspectorJobProvider(id));
+    } on Object catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Claims a pending request. Invalidates the shared indexes plus this one
+  /// row, so the board drops it and the jobs list picks it up.
+  Future<void> accept(String id) {
+    return _transition(
+      () => ref.read(inspectionRepositoryProvider).accept(id),
+      id,
+    );
+  }
+
+  Future<void> start(String id) {
+    return _transition(
+      () => ref.read(inspectionRepositoryProvider).start(id),
+      id,
+    );
+  }
+
+  Future<void> complete(String id) {
+    return _transition(
+      () => ref.read(inspectionRepositoryProvider).complete(id),
+      id,
+    );
   }
 }
 

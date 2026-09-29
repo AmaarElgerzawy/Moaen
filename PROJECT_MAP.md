@@ -3,7 +3,7 @@
 > Remote car-inspection marketplace. A buyer in one city hires a certified local
 > inspector to examine a vehicle and receive a report before travelling to buy it.
 >
-> **Last updated:** 2026-09-27 · **Phase:** 1 — architecture, schema and RLS complete and verified against the live project; only the device smoke test (M5) remains, pending an Android emulator.
+> **Last updated:** 2026-09-29 · **Phase:** 2 — the client request flow *and* the inspector flow (city-scoped job board, my jobs, profile, accept → start → complete) are built and tested: **188/188 with `MOAEN_DB_URL`**, `flutter analyze` clean. Only the device smoke test (M5) remains, pending an Android emulator.
 > **Rule:** update this file in the same change as any code it describes.
 
 ---
@@ -114,19 +114,23 @@ reviewed. That distinction mattered: the `SECURITY DEFINER` recursion fix and th
 `handle_new_user` provisioning path are the kind of thing that reads correctly and
 fails loudly at runtime.
 
-### Data flow (Phase 2+, context only — not built)
+### Data flow (Phase 2 — the inspector half is built; report entry and escrow are pending)
 
 ```
 Client                     Supabase                      Inspector
-  │ create request ───────▶ car_inspections (pending) ─────▶ job board (city match)
-  │                            │                                  │ accept
-  │                            │◀── inspector_id + accepted ───────┘
-  │                            │                                  │ in_progress
-  │                            │◀── Inspection_Reports + media ────┘
-  │ escrow payment ──▶ payments(status=escrow)   [service role only]
-  │ view report     ◀── reports + report_media + signed URLs
-  │ release funds   ──▶ payments(status=released) [service role only, P2]
+  │ create request ───────▶ car_inspections (pending) ─────▶ job board (city match)  ✓
+  │                            │                                  │ accept           ✓
+  │                            │◀── inspector_id + accepted ───────┘                 ✓
+  │                            │                                  │ in_progress      ✓
+  │                            │◀── Inspection_Reports + media ────┘                 (P4)
+  │ escrow payment ──▶ payments(status=escrow)   [service role only]                (P2)
+  │ view report     ◀── reports + report_media + signed URLs                        (P4)
+  │ release funds   ──▶ payments(status=released) [service role only]               (P2)
 ```
+✓ = built and tested. The buyer's create/dashboard/list/detail and the
+inspector's board/jobs/profile plus the three enforced transitions are live
+against real RLS; the report form, media upload and manual escrow remain Phase 2
+work (P4, P2).
 
 ### Inspection state machine
 
@@ -164,6 +168,15 @@ lib/
     auth/  user_profile · auth_repository · auth_controller · sign_in_page
            user_role_localizations
     home/  role_landing_page
+    inspections/
+      data/         inspection_repository      all car_inspections I/O + 3 enforced transitions
+      domain/       inspection_request · inspection_draft
+      application/  inspection_controller      myRequests / dashboard / jobBoard / myJobs /
+                                                inspectorJob (+ accept · start · complete)
+      presentation/ client screens (dashboard, create, my requests, request detail)
+                    inspector_home_page        NavigationBar: Job board | My jobs | Profile
+                    inspector_job_detail_page  status-driven accept/start/complete
+                    widgets/request_widgets.dart  StatusChip · RequestCard · DetailCard · DetailRow
   shared/
     utils/validators.dart
 supabase/
@@ -175,7 +188,9 @@ test/
   core/localization_test.dart     RTL default, fallback, translation coverage
   core/logging/app_logger_test.dart
   features/auth/auth_flow_test.dart
-  support/test_client.dart
+  features/inspections/client_request_flow_test.dart · rtl_layout_test.dart
+  features/inspections/inspector_flow_test.dart · inspector_rtl_layout_test.dart
+  support/fake_inspection_repository.dart · test_client.dart
   integration/rls_policies_test.dart   O2/O3/O4, against the live project
 tool/
   dart_defines.local.json         gitignored, optional client override (D6)
@@ -297,6 +312,14 @@ obstacle:
   to 0 would make every "sees nothing" assertion pass vacuously while the "sees
   something" ones failed for no visible reason — which is exactly the failure mode
   that cost a debugging cycle here.
+- **Exact row-count assertions only hold on an empty project.** The admin
+  visibility test asserted `select * from public.users` returned exactly 5 — true
+  while the project held no committed profiles, false the moment one real account
+  signs up outside the suite's rolled-back transaction (which is what happened:
+  a real developer account in `public.users` made it 6). It now asserts visibility
+  of all five *fixture* profiles (four of them not the admin's own) plus a count
+  greater than one, proving whole-population visibility without depending on what
+  the project has accumulated.
 - **The reference-integrity assertions (D9) assert the value, not the absence of
   an error.** RLS *permits* a client to UPDATE its own row; the trigger discards
   the change. A test asserting only "no error was raised" would therefore pass
@@ -372,6 +395,8 @@ Only B3 stands between the project and M5.
 | D12 | **Migrations are applied by `tool/apply_migration.dart`.** `supabase db push` requires `supabase link` (not linked), `psql` is not on PATH, and `supabase db reset` needs Docker. The script runs each file in one transaction via the Dart `postgres` driver, so a failure rolls back rather than leaving a half-applied schema. It depends on `tool/sql_statement_splitter.dart`, because the driver has no simple-query mode. |
 | D13 | **The dashboard leads with the buyer's *most recent* request, not their most *urgent* one.** The obvious rule — filter to open requests — is wrong for this product. The instant an inspection completes, a buyer who filtered to open would be told they have no active request and be offered to book another, and the report they paid for and travelled for would be unreachable from the screen they open first. Cancelled requests are shown for the same honesty reason. Ranking an open request above a completed one was also rejected: a buyer realistically has one live request, and an invented priority would be a product decision smuggled into a query. The card title is status-aware, because a finished report labelled "your active request" is still telling the buyer the wrong thing. |
 | D14 | **`AuthFailure` carries a reason, not a message.** It previously held an English sentence, which the sign-in banner rendered verbatim — so an Arabic build showed an English error, and nothing could be asserted about a failure except that *some* banner appeared. The repository now maps a server response to an `AuthFailureReason` and the presentation layer resolves that to a localized string. Three things follow. The repository stays free of the wording. The exact reason is a value a test can assert on and a log can record. And a *configuration* fault is distinguishable from a user error: `email_provider_disabled` is an operator mistake that no retry can clear, and presenting it as "Something went wrong. Please try again." is what made B4 look like a client bug for a day. `AuthFailure.detail` keeps the server's own wording for the log and is unreachable from the UI. The mapping matches on `AuthException.code` first — the stable contract — and falls back to message text, because GoTrue has renamed these strings across versions and an app pointed at an older server should still recognise `invalid login credentials` rather than degrade to a generic error. |
+| D15 | **The job board read takes no user id; the inspector's own jobs read takes it, and the difference is the point.** `listBoard()` takes no parameter because the board RLS policy already scopes to `pending` rows in the caller's `location_city` — a parameter that was accepted and then ignored would read as though the caller decides whose board this is. `listForInspector(profile.id)` passes the id because the participant RLS policy cannot tell which *side* of a request the caller was: an inspector who also buys cars holds both roles, and a row where they are the buyer must not appear in their jobs list. The narrowing cannot be abused to read a stranger's jobs — RLS still refuses any row the caller has no part in. |
+| D16 | **A status write that matches no row is read as a race, not guessed at.** Each transition updates then `.select().single()`, so a zero-row update (the loser of a claim, a request cancelled mid-read) surfaces as PGRST116 instead of silently succeeding. Accept maps it to "another inspector just took this request"; start/complete map it to "no longer in that state". The trigger stays the authority on legality: a page that offers the wrong action can still never move a request illegally — the database refuses, and the page just has to say why. |
 
 ### Assumptions
 
@@ -394,7 +419,7 @@ Only B3 stands between the project and M5.
 | P2 | Escrow release / refund endpoint. | D1. A service-role Edge Function plus an audit log. |
 | P3 | PDF report generation. | `pdf_report_url` stays nullable until then. |
 | P4 | Media and PDF upload UI. | Buckets and policies exist (0003); only the client side is missing. |
-| P5 | ~~Job board, request creation, report entry.~~ **Partly done** — request creation, the dashboard tracker, the list and the detail view are built and tested. Still open: the **city-scoped inspector job board** (accept / decline / start / complete) and **report entry**. | Inspector work needs its own screens; the state machine's transitions are already enforced by trigger, so the UI cannot skip them. |
+| P5 | ~~Job board, request creation, report entry.~~ **Mostly done** — the client flow (create, dashboard tracker, list, detail) and the inspector flow (city-scoped job board, my jobs, profile, accept → start → complete) are built and tested. Still open: **report entry** — the inspector's report form and its media upload. | The `enforce_inspection_transition` trigger makes every status move the UI already performs irreversible and properly ordered; report entry is next because it is the inspector's one remaining screen. |
 | P6 | ~~Arabic UI and RTL.~~ **done** — `flutter_localizations` + ARB (`lib/l10n/arb/app_{en,ar}.arb`), Arabic default and fallback, `Directionality` resolved by `MaterialApp` and asserted in `test/core/localization_test.dart`. Android launcher label localised via `values/strings.xml` and `values-ar/strings.xml`. |
 | P7 | Notifications on status change. | No push provider selected. |
 | P8 | Inspector payouts. | Follows the D1 escrow outcome. |
@@ -402,6 +427,7 @@ Only B3 stands between the project and M5.
 | P10 | Normalise `city` to a reference table. | Awaits a second consumer (A5/A2). |
 | P11 | **Release signing is unverified.** `flutter build apk --release` with no `key.properties` falls back to debug keys. A real keystore is required before distribution, and the build will look successful right up until it matters. |
 | P12 | **No screen has been seen on a real device** (B3). The RTL work is asserted from laid-out geometry rather than from a screenshot, which catches a number on the wrong edge but cannot catch a font that renders Arabic as boxes. | Needs an emulator. |
+| P13 | **Inspection write-failure messages are English, shown verbatim.** The buyer's cancel and the new inspector transitions surface `InspectionFailure.message` directly, so an Arabic build shows an English sentence on a write failure — the exact gap D14 closed for auth. It was deliberately left that way for the inspector work: fixing it properly is the D14 move again (a reason enum resolved through the ARB), and doing that during the flow build would have churned every existing client-flow assertion for no behaviour. | Do the D14 treatment: `InspectionFailureReason` + an ARB mapping, replacing the message strings in the repository and the snackbar call sites. Safe whenever, since it changes wording, not behaviour. |
 
 ---
 
@@ -413,9 +439,10 @@ Only B3 stands between the project and M5.
 | **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
 | **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 28/28 live |
-| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 136 unit/widget + 28 RLS + 4 live auth |
+| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 157 unit/widget + 28 RLS + 4 live auth |
 | **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** — the sign-in half is now proven against live GoTrue, so only the on-device part is outstanding |
 | **M6** | Client request flow | Dashboard, create form, list and detail render in both locales; create/cancel reach the database | **met** — but see B3: it has never run on a device |
+| **M7** | Inspector flow | Job board (city-scoped), my jobs, profile tab, and accept → start → complete all render in both locales with the trigger's transitions enforced and the claim race reported | **met** — 21 new widget tests (15 flow + 6 Arabic-RTL geometry) riding on the live RLS proof; still never on a device (B3) |
 
 ## Running it
 
@@ -445,10 +472,11 @@ flutter run
 flutter test
 ```
 
-`flutter test` on its own reports 136 passing and 31 skipped: the RLS and live-auth
+`flutter test` on its own reports 157 passing and 31 skipped: the RLS and live-auth
 suites skip themselves when `MOAEN_DB_URL` is absent, so a developer with no database
 credential still gets a useful signal. A credential that is *present but wrong* is
-not skipped — it fails loudly.
+not skipped — it fails loudly. With the credential every one of the 188 runs
+(157 unit/widget + 28 RLS + 4 live auth).
 
 The live auth suite needs the gate for a stronger reason than the RLS one: it reaches
 the network as well as the database, so without it a bare `flutter test` would make
@@ -494,6 +522,15 @@ themselves:
   This was a real 23-pixel overflow on the dashboard's progress track, found only
   because a test rendered it in Arabic — the exact class of bug that reaches
   production when the team reads the app in English.
+- **`Spacer()` beside a long label overflows the row on a narrow screen.** The
+  request card put the reference against `Spacer()` and the status chip; under
+  English the "Awaiting inspector" chip — which only a *pending* row shows, and
+  which none of the buyer screens ever rendered — was wider than the space the
+  reference left it, painting 14 px off the edge at 420 dp. The reference now
+  lives in an `Expanded` with an ellipsis, so the label can shrink and the chip
+  stays whole at any phone width. Found by the inspector RTL test rendering a
+  *pending* row in English; the Arabic test passed because the label is shorter.
+  The buyer screens would have shipped this bug unreported.
 - **`AppLocalizations.of(context)` returns null for a `MaterialApp`'s own
   context,** because `Localizations` is installed *inside* `MaterialApp`. Read it
   from a page's context.

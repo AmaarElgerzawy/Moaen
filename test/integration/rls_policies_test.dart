@@ -161,7 +161,33 @@ void main() {
         // demonstrate nothing. This path actually evaluates
         // current_user_role() = 'admin' in users_select_self_or_admin.
         await harness.asUser(admin);
-        expect(await harness.count('select * from public.users'), 5);
+
+        // Not an exact count of every row in the table: the project is in use
+        // and can hold profiles committed before this transaction, so an exact
+        // total would fail on a healthy project the moment one real account
+        // signs up. What admin-ness has to guarantee is whole-of-population
+        // visibility — here, all five fixture profiles, of which four are not
+        // the admin's own. A client runs the same query and sees one row (the
+        // tenant-isolation group proves that for clients).
+        expect(
+          await harness.count(
+            'select * from public.users '
+            'where id in (\$1::uuid, \$2::uuid, \$3::uuid, \$4::uuid, \$5::uuid)',
+            [clientA, clientB, inspectorCairo, inspectorAlex, admin],
+          ),
+          5,
+          reason: 'an admin sees every fixture profile, including four that '
+              'are not their own',
+        );
+
+        // And the visibility is not a quirk of the fixture ids: the admin sees
+        // strictly more than their own row no matter what the ambient
+        // population is.
+        expect(
+          await harness.count('select * from public.users'),
+          greaterThan(1),
+          reason: 'admin sees the whole population, not just themselves',
+        );
       });
     });
 

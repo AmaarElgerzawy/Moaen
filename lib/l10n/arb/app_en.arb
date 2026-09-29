@@ -143,6 +143,48 @@
   "actionKeep": "Keep it",
   "requestCancelled": "Request cancelled.",
 
+  "navJobBoard": "Job board",
+  "navMyJobs": "My jobs",
+  "navProfile": "Profile",
+
+  "boardTitle": "Available in {city}",
+  "@boardTitle": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "boardEmptyTitle": "No requests yet",
+  "boardEmptyBody": "New inspection requests in {city} appear here.",
+  "@boardEmptyBody": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "boardLoadError": "Could not load the job board.",
+
+  "jobsEmpty": "You have not accepted any inspections yet.",
+  "jobsLoadError": "Could not load your jobs.",
+
+  "actionAccept": "Accept inspection",
+  "actionStart": "Start inspection",
+  "actionComplete": "Complete inspection",
+  "acceptConfirmTitle": "Accept this inspection?",
+  "acceptConfirmBody": "Accepting commits you to inspecting this car in {city}. The buyer will see your name on the request.",
+  "@acceptConfirmBody": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "completeConfirmTitle": "Complete this inspection?",
+  "completeConfirmBody": "Only complete it once the inspection is done. The buyer will see the request as finished.",
+  "inspectorAccepted": "Inspection accepted.",
+  "inspectorStarted": "Inspection started.",
+  "inspectorCompleted": "Inspection completed.",
+  "inspectorAvailableNote": "Available in your city.",
+  "inspectorAssignedNote": "This inspection is assigned to you.",
+  "inspectorSettledNote": "This inspection is settled.",
+  "profileCityNotSet": "No service city set.",
+
   "errorRequired": "This field is required",
   "errorInvalidYear": "Enter a year between 1950 and 2100",
   "errorInvalidPhone": "Enter a valid phone number",

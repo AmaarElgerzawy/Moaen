@@ -118,6 +118,127 @@ class InspectionRepository {
     }
   }
 
+  // --- Inspector side --------------------------------------------------------
+
+  /// The inspector's job board: requests waiting to be claimed.
+  ///
+  /// Takes no user id, exactly like [listForClient]. The board RLS policy
+  /// (`inspections_select_board`) already restricts rows to `pending` requests
+  /// in the caller's `location_city`, so the only predicate written here is the
+  /// status the board is for — which also matches the board index in migration
+  /// 0001. Passing the inspector's identity as a parameter would be a filter
+  /// that is accepted and then ignored, which reads as though the caller decides
+  /// whose board this is.
+  Future<List<InspectionRequest>> listBoard() async {
+    try {
+      final List<Map<String, dynamic>> rows = await _client
+          .from(_table)
+          .select()
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
+
+      return rows.map(InspectionRequest.fromRow).toList();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('job board load failed', error, stackTrace);
+      throw const InspectionFailure('Could not load the job board.');
+    }
+  }
+
+  /// The signed-in inspector's own jobs, newest first.
+  ///
+  /// This one does take a user id, and unlike [listForClient] and [listBoard]
+  /// it is used rather than being a redundant echo of RLS. The participant RLS
+  /// policy returns rows where the caller is either party — but "my jobs" means
+  /// the *inspector* side of those rows. An inspector who also buys cars holds
+  /// both roles, and a row where they are the buyer must not appear in their
+  /// jobs list, so the query has to say which side. The narrowing cannot be
+  /// abused: RLS still refuses any row the caller has no part in, so passing a
+  /// stranger's id cannot read their jobs.
+  Future<List<InspectionRequest>> listForInspector(String inspectorId) async {
+    try {
+      final List<Map<String, dynamic>> rows = await _client
+          .from(_table)
+          .select()
+          .eq('inspector_id', inspectorId)
+          .order('created_at', ascending: false);
+
+      return rows.map(InspectionRequest.fromRow).toList();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('inspector jobs load failed', error, stackTrace);
+      throw const InspectionFailure('Could not load your jobs.');
+    }
+  }
+
+  /// Claims a pending request as the calling inspector.
+  ///
+  /// The `pending -> accepted` transition is what migration 0001's
+  /// `enforce_inspection_transition` trigger permits, and the same trigger
+  /// binds `inspector_id := auth.uid()` — so an acceptance is always assigned
+  /// to the inspector who made it, even if two of them tap Accept at once. What
+  /// this method has to handle is the loser of that race: their update matches
+  /// zero rows because the request left `pending` a moment earlier. The
+  /// `.select().single()` turns that silent no-op into a PGRST116 that the
+  /// caller can read as "taken", instead of letting the app cheerfully report
+  /// an acceptance the database refused.
+  Future<void> accept(String id) async {
+    await _transition(id, 'request accept failed', claim: true, status: 'accepted');
+  }
+
+  /// Starts an accepted job: `accepted -> in_progress`.
+  Future<void> start(String id) async {
+    await _transition(id, 'request start failed', claim: false, status: 'in_progress');
+  }
+
+  /// Completes an in-progress job: `in_progress -> completed`.
+  Future<void> complete(String id) async {
+    await _transition(id, 'request complete failed', claim: false, status: 'completed');
+  }
+
+  /// The shared shape of the three inspector status writes.
+  ///
+  /// `claim: true` is the one write where the row can be stolen out from under
+  /// the writer (another inspector taking the same pending request), so [accept]
+  /// uses it to distinguish "taken by someone else" from "moved on" when the
+  /// update matches nothing.
+  Future<void> _transition(
+    String id,
+    String logName, {
+    required bool claim,
+    required String status,
+  }) async {
+    try {
+      await _client
+          .from(_table)
+          .update(<String, dynamic>{'status': status})
+          .eq('id', id)
+          .select()
+          .single();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error(logName, error, stackTrace, {'id': id});
+      throw InspectionFailure(_transitionMessageFor(error, claim: claim));
+    }
+  }
+
+  /// Maps a transition failure onto something an inspector can act on.
+  ///
+  /// The trigger is the authority on what is legal, and its one failure needs a
+  /// sentence that says the request moved on — not [_messageFor]'s "rejected by
+  /// the server", which is about form fields and would be true of nothing here.
+  String _transitionMessageFor(PostgrestException error, {required bool claim}) {
+    if (error.code == 'PGRST116') {
+      // The update matched no row: the request is no longer in the state the
+      // write assumed it was. For a claim the realistic cause is another
+      // inspector getting there first.
+      return claim
+          ? 'Another inspector just took this request.'
+          : 'This request is no longer in that state.';
+    }
+    if (error.message.toLowerCase().contains('transition')) {
+      return 'This action is not allowed for this request right now.';
+    }
+    return _messageFor(error);
+  }
+
   /// Cancels a request.
   ///
   /// A buyer's only write action in Phase 2. The `cancelled` transition is

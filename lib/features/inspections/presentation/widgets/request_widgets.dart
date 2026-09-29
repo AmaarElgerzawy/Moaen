@@ -83,6 +83,91 @@ class StatusChip extends StatelessWidget {
   }
 }
 
+/// A titled section of a detail page: a card with a small, muted heading.
+///
+/// Shared by the buyer's request detail and the inspector's job detail so the
+/// two views of the same request cannot drift apart.
+class DetailCard extends StatelessWidget {
+  const DetailCard({super.key, required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A labelled value inside a [DetailCard]: a small muted label, then the value
+/// taking the remaining width and emphasising where told to.
+class DetailRow extends StatelessWidget {
+  const DetailRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.emphasise = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasise;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextTheme text = Theme.of(context).textTheme;
+
+    // Mirrors the [DetailCard]'s layout needs rather than a fixed height, so
+    // Arabic ascenders and descenders are never clipped by a hard-coded row
+    // height. The label flexes to the value, which is what lets the value align
+    // to the reading edge under both directions.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: text.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: emphasise
+                  ? text.titleSmall?.copyWith(fontWeight: FontWeight.w800)
+                  : text.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A request as a tappable row: car, reference, status, price.
 class RequestCard extends StatelessWidget {
   const RequestCard({super.key, required this.request, this.onTap});
@@ -109,24 +194,37 @@ class RequestCard extends StatelessWidget {
                   // The reference is the buyer's handle for this request, so it
                   // leads. Under RTL it sits on the right, which is where the
                   // eye starts.
-                  Text(
-                    request.reference,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      // Tabular figures, so the number does not change width
-                      // between rows as the digits change.
-                      //
-                      // Deliberately no `textDirection` override: "MN-9920" is a
-                      // single left-to-right run, so bidi renders it correctly
-                      // inside the ambient RTL paragraph, and forcing LTR would
-                      // additionally flip the alignment to the wrong edge.
-                      // Pinned in `test/features/inspections/rtl_layout_test.dart`.
-                      fontFeatures: const <FontFeature>[
-                        FontFeature.tabularFigures(),
-                      ],
+                  //
+                  // Expanded rather than left to a Spacer: the status chip is
+                  // the widest piece of this row (the longest label in either
+                  // language is "awaiting inspector"), and letting the
+                  // reference shrink instead lets the chip stay whole at any
+                  // phone width. A reference never actually truncates — it is a
+                  // short run — but a row that overflows is a row that paints
+                  // underneath the chip on a narrow screen.
+                  Expanded(
+                    child: Text(
+                      request.reference,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        // Tabular figures, so the number does not change width
+                        // between rows as the digits change.
+                        //
+                        // Deliberately no `textDirection` override: "MN-9920" is
+                        // a single left-to-right run, so bidi renders it
+                        // correctly inside the ambient RTL paragraph, and
+                        // forcing LTR would additionally flip the alignment to
+                        // the wrong edge. Pinned in
+                        // `test/features/inspections/rtl_layout_test.dart`.
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures(),
+                        ],
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: AppSpacing.sm),
                   StatusChip(status: request.status, dense: true),
                 ],
               ),

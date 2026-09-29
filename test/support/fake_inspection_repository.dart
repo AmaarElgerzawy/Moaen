@@ -24,8 +24,15 @@ class FakeInspectionRepository extends InspectionRepository {
   /// whole fake.
   final List<InspectionRequest> _requests;
 
-  /// When set, every method throws it. Used to drive the error states.
-  final InspectionFailure? failure;
+  /// When set, every method throws it. Used to drive the error states. Mutable
+  /// so a test can render the error state and then clear it to exercise retry.
+  InspectionFailure? failure;
+
+  /// The inspector identity [accept] assigns a request to. Tests must make the
+  /// signed-in inspector's auth profile use this id, or the accepted job will
+  /// not appear in their jobs list — mirroring how the trigger binds
+  /// `inspector_id := auth.uid()` in the real database.
+  String assignedInspectorId = 'inspector-1';
 
   /// Drafts passed to [create], in order.
   final List<InspectionDraft> createdDrafts = <InspectionDraft>[];
@@ -33,9 +40,20 @@ class FakeInspectionRepository extends InspectionRepository {
   /// Ids passed to [cancel], in order.
   final List<String> cancelledIds = <String>[];
 
+  /// Ids passed to [accept], [start] and [complete], in order.
+  final List<String> acceptedIds = <String>[];
+  final List<String> startedIds = <String>[];
+  final List<String> completedIds = <String>[];
+
   /// Set to fail only [create], for testing a submit that fails while reads
   /// still work.
   Object? createFailure;
+
+  /// Fail a single inspector transition, for testing a write that fails while
+  /// reads still work.
+  Object? acceptFailure;
+  Object? startFailure;
+  Object? completeFailure;
 
   @override
   Future<List<InspectionRequest>> listForClient() async {
@@ -92,6 +110,89 @@ class FakeInspectionRepository extends InspectionRepository {
     final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
     if (index == -1) return;
     _requests[index] = _copyWithStatus(_requests[index], InspectionStatus.cancelled);
+  }
+
+  @override
+  Future<List<InspectionRequest>> listBoard() async {
+    final InspectionFailure? f = failure;
+    if (f != null) throw f;
+
+    // The real board is scoped to the inspector's city by RLS; the fake scopes
+    // to the status that board rows have, which is what the screens distinguish.
+    return <InspectionRequest>[
+      for (final InspectionRequest request in _requests)
+        if (request.status == InspectionStatus.pending) request,
+    ];
+  }
+
+  @override
+  Future<List<InspectionRequest>> listForInspector(String inspectorId) async {
+    final InspectionFailure? f = failure;
+    if (f != null) throw f;
+
+    return <InspectionRequest>[
+      for (final InspectionRequest request in _requests)
+        if (request.inspectorId == inspectorId) request,
+    ];
+  }
+
+  @override
+  Future<void> accept(String id) async {
+    acceptedIds.add(id);
+    final Object? claimFailure = acceptFailure;
+    if (claimFailure != null) throw claimFailure;
+    final InspectionFailure? f = failure;
+    if (f != null) throw f;
+
+    final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
+    if (index == -1) return;
+    final InspectionRequest request = _requests[index];
+    // The trigger binds the claiming inspector; the fake does the same using
+    // [assignedInspectorId].
+    _requests[index] = InspectionRequest(
+      id: request.id,
+      referenceNo: request.referenceNo,
+      clientId: request.clientId,
+      inspectorId: assignedInspectorId,
+      carMake: request.carMake,
+      carModel: request.carModel,
+      carYear: request.carYear,
+      sellerPhone: request.sellerPhone,
+      sellerLocationAddress: request.sellerLocationAddress,
+      city: request.city,
+      inspectionCenterName: request.inspectionCenterName,
+      status: InspectionStatus.accepted,
+      price: request.price,
+      clientNotes: request.clientNotes,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
+    );
+  }
+
+  @override
+  Future<void> start(String id) async {
+    startedIds.add(id);
+    final Object? writeFailure = startFailure;
+    if (writeFailure != null) throw writeFailure;
+    final InspectionFailure? f = failure;
+    if (f != null) throw f;
+
+    final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
+    if (index == -1) return;
+    _requests[index] = _copyWithStatus(_requests[index], InspectionStatus.inProgress);
+  }
+
+  @override
+  Future<void> complete(String id) async {
+    completedIds.add(id);
+    final Object? writeFailure = completeFailure;
+    if (writeFailure != null) throw writeFailure;
+    final InspectionFailure? f = failure;
+    if (f != null) throw f;
+
+    final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
+    if (index == -1) return;
+    _requests[index] = _copyWithStatus(_requests[index], InspectionStatus.completed);
   }
 
   /// Builds a row the way the database would, including a server-assigned

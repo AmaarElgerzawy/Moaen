@@ -119,6 +119,33 @@
   "actionKeep": "الاحتفاظ به",
   "requestCancelled": "تم إلغاء الطلب.",
 
+  "navJobBoard": "لوحة الوظائف",
+  "navMyJobs": "وظائفي",
+  "navProfile": "الملف الشخصي",
+
+  "boardTitle": "متاح في {city}",
+  "boardEmptyTitle": "لا توجد طلبات بعد",
+  "boardEmptyBody": "ستظهر هنا طلبات المعاينة الجديدة في {city}.",
+  "boardLoadError": "تعذّر تحميل لوحة الوظائف.",
+
+  "jobsEmpty": "لم تقبل أي معاينة بعد.",
+  "jobsLoadError": "تعذّر تحميل وظائفك.",
+
+  "actionAccept": "قبول المعاينة",
+  "actionStart": "بدء المعاينة",
+  "actionComplete": "إنهاء المعاينة",
+  "acceptConfirmTitle": "قبول هذه المعاينة؟",
+  "acceptConfirmBody": "القبول يُلزمك بمعاينة هذه السيارة في {city}. سيرى المشتري اسمك على الطلب.",
+  "completeConfirmTitle": "إنهاء هذه المعاينة؟",
+  "completeConfirmBody": "أنهها فقط بعد انتهاء المعاينة. سيرى المشتري الطلب مكتملًا.",
+  "inspectorAccepted": "تم قبول المعاينة.",
+  "inspectorStarted": "بدأت المعاينة.",
+  "inspectorCompleted": "اكتملت المعاينة.",
+  "inspectorAvailableNote": "متاحة في مدينتك.",
+  "inspectorAssignedNote": "هذه المعاينة مكلّف بها أنت.",
+  "inspectorSettledNote": "هذه المعاينة منتهية.",
+  "profileCityNotSet": "لم تُحدد مدينة خدمة.",
+
   "errorRequired": "هذا الحقل مطلوب",
   "errorInvalidYear": "أدخل سنة بين 1950 و2100",
   "errorInvalidPhone": "أدخل رقم هاتف صحيح",
