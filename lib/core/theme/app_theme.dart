@@ -49,56 +49,112 @@ abstract final class AppRadius {
   static const double pill = 999;
 }
 
+/// The brand palette, from the approved design system.
+///
+/// These are the colours the Figma screens specify verbatim, so they are
+/// constants rather than Material tones: a status chip that is "light green
+/// with emerald text" has to be exactly that, and re-deriving it from the
+/// scheme would let a seed change shift the whole UI while claiming stability.
+///
+/// Where a colour is *not* pinned by the design, the theme lets Material 3
+/// derive it from the seed as usual — the palette below is the seam, not every
+/// pixel.
+abstract final class AppColors {
+  /// Primary brand: active CTAs, ticked steps, highlighted totals.
+  static const Color emerald = Color(0xFF00875A);
+
+  /// Dark slate: app bars and header banners.
+  static const Color slate = Color(0xFF0D131A);
+
+  /// Screen background: a soft off-white.
+  static const Color canvas = Color(0xFFF4F6F8);
+
+  /// Hairline border on cards.
+  static const Color cardBorder = Color(0xFFE5E9EB);
+
+  /// Light green surface — success chips, the estimate box.
+  static const Color successSurface = Color(0xFFE6F4EA);
+
+  /// Light amber surface — pending/warning chips and the tracking state.
+  static const Color warningSurface = Color(0xFFFEF3D6);
+
+  /// The amber foreground that reads against [warningSurface].
+  static const Color warningOn = Color(0xFFD97706);
+
+  /// Light blue surface — informational chips ("assigned").
+  static const Color infoSurface = Color(0xFFEAF1FB);
+
+  /// The blue foreground that reads against [infoSurface].
+  static const Color infoOn = Color(0xFF1F5AA8);
+
+  /// Neutral grey chip surface for settled/cancelled states.
+  static const Color neutralSurface = Color(0xFFEDEFF1);
+
+  /// The grey foreground that reads against [neutralSurface].
+  static const Color neutralOn = Color(0xFF5F6B76);
+}
+
 /// The application theme.
 ///
 /// Kept deliberately narrow. Material 3 derives most of the component styling
 /// from the seed, so overriding a component theme here is a decision that has to
 /// be justified by a visible problem, not a preference.
 abstract final class AppTheme {
-  /// Deep green. Reads as trustworthy and mechanical rather than recreational,
-  /// which suits a product where the buyer is spending real money on a
-  /// second-hand car and is nervous about it.
-  static const Color seed = Color(0xFF0E6B55);
+  /// Emerald green (design system). Reads as trustworthy and mechanical rather
+  /// than recreational, which suits a product where the buyer is spending real
+  /// money on a second-hand car and is nervous about it.
+  static const Color seed = AppColors.emerald;
 
   static ThemeData light() {
     final ColorScheme colors = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.light,
+    ).copyWith(
+      // `fromSeed` never lands on the brand colour itself, so the primary is
+      // pinned explicitly — an emerald CTA that renders as teal is a spec
+      // violation nobody can point at in code.
+      primary: AppColors.emerald,
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colors,
-      scaffoldBackgroundColor: colors.surface,
+      scaffoldBackgroundColor: AppColors.canvas,
       visualDensity: VisualDensity.standard,
 
       appBarTheme: AppBarTheme(
         centerTitle: true,
-        backgroundColor: colors.surface,
-        foregroundColor: colors.onSurface,
+        // The dark slate header bar from the design: the same surface every
+        // page top sits on, which is what makes the chrome read as one system.
+        backgroundColor: AppColors.slate,
+        foregroundColor: Colors.white,
         elevation: 0,
-        scrolledUnderElevation: 2,
+        scrolledUnderElevation: 0,
       ),
 
       cardTheme: CardThemeData(
         elevation: 0,
-        color: colors.surfaceContainerLow,
+        // White cards on the off-white canvas, with a hairline border instead
+        // of a shadow: the flat look the design specifies.
+        color: Colors.white,
         margin: EdgeInsets.zero,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.card),
+          side: const BorderSide(color: AppColors.cardBorder),
         ),
       ),
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: colors.surfaceContainerLowest,
+        fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: BorderSide(color: colors.outlineVariant),
+          borderSide: const BorderSide(color: AppColors.cardBorder),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: BorderSide(color: colors.outlineVariant),
+          borderSide: const BorderSide(color: AppColors.cardBorder),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -141,6 +197,30 @@ abstract final class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      ),
+
+      // The active tab indicator on the inspector's navigation bar: light
+      // emerald surface with the emerald icon, as the design's active states.
+      navigationBarTheme: NavigationBarThemeData(
+        indicatorColor: AppColors.successSurface,
+        iconTheme: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+          return IconThemeData(
+            color: states.contains(WidgetState.selected)
+                ? AppColors.emerald
+                : colors.onSurfaceVariant,
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (Set<WidgetState> states) => TextStyle(
+            fontSize: 12,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+            color: states.contains(WidgetState.selected)
+                ? AppColors.emerald
+                : colors.onSurfaceVariant,
+          ),
         ),
       ),
 

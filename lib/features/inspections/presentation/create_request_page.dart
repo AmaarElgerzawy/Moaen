@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../cities/presentation/city_picker.dart';
 import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
 import '../domain/inspection_draft.dart';
@@ -29,9 +30,13 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
   final TextEditingController _year = TextEditingController();
   final TextEditingController _phone = TextEditingController();
   final TextEditingController _address = TextEditingController();
-  final TextEditingController _city = TextEditingController();
   final TextEditingController _notes = TextEditingController();
   final TextEditingController _budget = TextEditingController();
+
+  /// The chosen canonical city — a value, not a controller, because it comes
+  /// from the [CityPicker] sheet rather than from a cursor. Null until the buyer
+  /// makes a choice, which is what the validator flags.
+  String? _city;
 
   @override
   void dispose() {
@@ -44,7 +49,6 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
       _year,
       _phone,
       _address,
-      _city,
       _notes,
       _budget,
     ]) {
@@ -59,18 +63,17 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
     carYear: _year.text,
     sellerPhone: _phone.text,
     sellerLocationAddress: _address.text,
-    city: _city.text,
+    city: _city ?? '',
     clientNotes: _notes.text,
     budget: _budget.text,
   );
 
   /// The estimate the total is computed from.
   ///
-  /// Read from the city field so the breakdown updates as the buyer types,
+  /// Read from the selected city so the breakdown tracks the buyer's choice,
   /// which is what makes the number feel like a quote rather than a static
-  /// caption. [setState] on every keystroke is cheap here — the page rebuilds a
-  /// handful of text fields.
-  CostEstimate get _estimate => CostEstimate.forCity(_city.text.trim());
+  /// caption.
+  CostEstimate get _estimate => CostEstimate.forCity((_city ?? '').trim());
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -125,123 +128,140 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           children: <Widget>[
-            _SectionHeader(l10n.createSectionVehicle),
-            _Field(
-              controller: _make,
-              label: l10n.fieldCarMake,
-              textInputAction: TextInputAction.next,
-              validator: (String? v) =>
-                  (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
-            ),
-            _Field(
-              controller: _model,
-              label: l10n.fieldCarModel,
-              textInputAction: TextInputAction.next,
-              validator: (String? v) =>
-                  (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
-            ),
-            _Field(
-              controller: _year,
-              label: l10n.fieldCarYear,
-              // Digits only. A year is four numbers, and a keyboard offering
-              // letters for it is a keyboard offering the wrong suggestion.
-              keyboardType: TextInputType.number,
-              inputFormatters: <TextInputFormatter>[
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(4),
+            _SectionCard(
+              number: '01',
+              title: l10n.createSectionVehicle,
+              children: <Widget>[
+                _Field(
+                  controller: _make,
+                  label: l10n.fieldCarMake,
+                  textInputAction: TextInputAction.next,
+                  validator: (String? v) =>
+                      (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
+                ),
+                _Field(
+                  controller: _model,
+                  label: l10n.fieldCarModel,
+                  textInputAction: TextInputAction.next,
+                  validator: (String? v) =>
+                      (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
+                ),
+                _Field(
+                  controller: _year,
+                  label: l10n.fieldCarYear,
+                  // Digits only. A year is four numbers, and a keyboard offering
+                  // letters for it is a keyboard offering the wrong suggestion.
+                  keyboardType: TextInputType.number,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
+                  maxLength: 4,
+                  textInputAction: TextInputAction.next,
+                  validator: (String? v) {
+                    final String input = (v ?? '').trim();
+                    if (input.isEmpty) return l10n.errorRequired;
+                    if (_draft.year == null) return l10n.errorInvalidYear;
+                    return null;
+                  },
+                ),
               ],
-              maxLength: 4,
-              textInputAction: TextInputAction.next,
-              validator: (String? v) {
-                final String input = (v ?? '').trim();
-                if (input.isEmpty) return l10n.errorRequired;
-                if (_draft.year == null) return l10n.errorInvalidYear;
-                return null;
-              },
             ),
-
-            const SizedBox(height: AppSpacing.lg),
-            _SectionHeader(l10n.createSectionSeller),
-            _Field(
-              controller: _phone,
-              label: l10n.fieldSellerPhone,
-              // Not `TextInputType.phone`: that keyboard has no `+`, and an
-              // international number almost always needs one.
-              keyboardType: TextInputType.text,
-              inputFormatters: <TextInputFormatter>[
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
-                LengthLimitingTextInputFormatter(20),
+            _SectionCard(
+              number: '02',
+              title: l10n.createSectionSeller,
+              children: <Widget>[
+                _Field(
+                  controller: _phone,
+                  label: l10n.fieldSellerPhone,
+                  // Not `TextInputType.phone`: that keyboard has no `+`, and an
+                  // international number almost always needs one.
+                  keyboardType: TextInputType.text,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
+                    LengthLimitingTextInputFormatter(20),
+                  ],
+                  textInputAction: TextInputAction.next,
+                  validator: (String? v) {
+                    final String input = (v ?? '').trim();
+                    if (input.isEmpty) return l10n.errorRequired;
+                    // The schema requires 5..30 characters. The lower bound is the
+                    // only one enforced here; an over-long value is the length
+                    // formatter's job.
+                    if (input.length < 5) return l10n.errorInvalidPhone;
+                    return null;
+                  },
+                ),
+                _Field(
+                  controller: _address,
+                  label: l10n.fieldSellerAddress,
+                  maxLines: 2,
+                  textInputAction: TextInputAction.next,
+                  validator: (String? v) =>
+                      (v ?? '').trim().length < 3 ? l10n.errorRequired : null,
+                ),
+                CityPicker(
+                  label: l10n.fieldCity,
+                  helperText: l10n.createCityHelper,
+                  // Store the choice here so the draft and the estimate below
+                  // follow it. The FormField's own state keeps the submitted
+                  // value for validation; the page needs the value in a field
+                  // it can read when the request is sent.
+                  onChanged: (String city) =>
+                      setState(() => _city = city),
+                  validator: (String? v) =>
+                      (v ?? '').trim().length < 2 ? l10n.errorRequired : null,
+                ),
               ],
-              textInputAction: TextInputAction.next,
-              validator: (String? v) {
-                final String input = (v ?? '').trim();
-                if (input.isEmpty) return l10n.errorRequired;
-                // The schema requires 5..30 characters. The lower bound is the
-                // only one enforced here; an over-long value is the length
-                // formatter's job.
-                if (input.length < 5) return l10n.errorInvalidPhone;
-                return null;
-              },
             ),
-            _Field(
-              controller: _address,
-              label: l10n.fieldSellerAddress,
-              maxLines: 2,
-              textInputAction: TextInputAction.next,
-              validator: (String? v) =>
-                  (v ?? '').trim().length < 3 ? l10n.errorRequired : null,
-            ),
-            _Field(
-              controller: _city,
-              label: l10n.fieldCity,
-              // onChanged rebuilds so the estimate below follows the city.
-              onChanged: (_) => setState(() {}),
-              textInputAction: TextInputAction.next,
-              validator: (String? v) =>
-                  (v ?? '').trim().length < 2 ? l10n.errorRequired : null,
-            ),
-
-            const SizedBox(height: AppSpacing.lg),
-            _SectionHeader(l10n.createSectionNotes),
-            _Field(
-              controller: _notes,
-              label: l10n.createNotesHint,
-              hintText: l10n.createSectionNotes,
-              helperText: l10n.createNotesOptional,
-              // Multiline, so `next` would move to the next line rather than the
-              // next field.
-              maxLines: 4,
-              // The column is capped at 1000 characters in the database. Counted
-              // as you type rather than rejected on submit, so a buyer who has
-              // written 1200 characters finds out while they can still cut
-              // something.
-              maxLength: 1000,
-              textInputAction: TextInputAction.newline,
-            ),
-
-            const SizedBox(height: AppSpacing.lg),
-            _SectionHeader(l10n.costTitle),
-            _Field(
-              controller: _budget,
-              label: l10n.fieldBudget,
-              helperText: l10n.fieldBudgetHint,
-              keyboardType: TextInputType.number,
-              inputFormatters: <TextInputFormatter>[
-                // Digits and one decimal point. A second point is dropped by the
-                // regex rather than producing a value that fails to parse.
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+            _SectionCard(
+              number: '03',
+              title: l10n.createSectionNotes,
+              children: <Widget>[
+                _Field(
+                  controller: _notes,
+                  label: l10n.createNotesHint,
+                  hintText: l10n.createSectionNotes,
+                  helperText: l10n.createNotesOptional,
+                  // Multiline, so `next` would move to the next line rather than
+                  // the next field.
+                  maxLines: 4,
+                  // The column is capped at 1000 characters in the database.
+                  // Counted as you type rather than rejected on submit, so a
+                  // buyer who has written 1200 characters finds out while they
+                  // can still cut something.
+                  maxLength: 1000,
+                  textInputAction: TextInputAction.newline,
+                ),
               ],
-              onChanged: (_) => setState(() {}),
-              textInputAction: TextInputAction.done,
-              validator: (String? v) {
-                final String input = (v ?? '').trim();
-                if (input.isEmpty) return l10n.errorRequired;
-                if (_draft.budgetAmount == null) return l10n.errorInvalidBudget;
-                return null;
-              },
             ),
-            const SizedBox(height: AppSpacing.sm),
-            _EstimatePreview(estimate: estimate, budget: _draft.budgetAmount),
+            _SectionCard(
+              number: '04',
+              title: l10n.costTitle,
+              children: <Widget>[
+                _Field(
+                  controller: _budget,
+                  label: l10n.fieldBudget,
+                  helperText: l10n.fieldBudgetHint,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: <TextInputFormatter>[
+                    // Digits and one decimal point. A second point is dropped by
+                    // the regex rather than producing a value that fails to parse.
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                  ],
+                  onChanged: (_) => setState(() {}),
+                  textInputAction: TextInputAction.done,
+                  validator: (String? v) {
+                    final String input = (v ?? '').trim();
+                    if (input.isEmpty) return l10n.errorRequired;
+                    if (_draft.budgetAmount == null) return l10n.errorInvalidBudget;
+                    return null;
+                  },
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _EstimatePreview(estimate: estimate, budget: _draft.budgetAmount),
+              ],
+            ),
 
             const SizedBox(height: AppSpacing.xl),
             FilledButton(
@@ -283,7 +303,10 @@ class _EstimatePreview extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        // The light-green estimate surface is a design token rather than a tone
+        // from the scheme: the quoted total is deliberately the emerald brand
+        // colour, and the box is its lighter friend.
+        color: AppColors.successSurface,
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Column(
@@ -344,19 +367,76 @@ class _Line extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.text);
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.number,
+    required this.title,
+    required this.children,
+  });
 
-  final String text;
+  /// The step number, as a two-digit badge ("01"). A string, not an int, so the
+  /// leading zero is the designer's, decided once here.
+  final String number;
+  final String title;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  _NumberBadge(number),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ...children,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The small emerald step badge on each section card.
+class _NumberBadge extends StatelessWidget {
+  const _NumberBadge(this.number);
+
+  final String number;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
       child: Text(
-        text,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
+        number,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onPrimary,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

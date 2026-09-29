@@ -185,6 +185,26 @@
   "inspectorSettledNote": "This inspection is settled.",
   "profileCityNotSet": "No service city set.",
 
+  "heroTitle": "Book a new inspection",
+  "heroBody": "A certified inspector checks the car where it is and sends you a full report.",
+  "heroAction": "Request now",
+
+  "createCityHelper": "Requests appear to inspectors in this city only.",
+
+  "cityPickerTitle": "Choose the city",
+  "cityPickerSearchHint": "Search cities",
+  "cityPickerEmpty": "No matching cities",
+  "cityPickerLoadError": "Could not load the city list.",
+
+  "profileEditCity": "Change service city",
+  "profileCityUpdated": "Service city updated.",
+
+  "actionCancel": "Cancel",
+  "actionSave": "Save",
+
+  "boardLive": "Live",
+  "boardEmptyHint": "Is the city wrong? Change your service city from your profile.",
+
   "errorRequired": "This field is required",
   "errorInvalidYear": "Enter a year between 1950 and 2100",
   "errorInvalidPhone": "Enter a valid phone number",

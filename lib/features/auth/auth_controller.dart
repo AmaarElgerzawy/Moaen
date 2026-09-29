@@ -77,4 +77,17 @@ class AuthController extends AsyncNotifier<UserProfile?> {
     await ref.read(authRepositoryProvider).signOut();
     state = const AsyncData(null);
   }
+
+  /// Changes the signed-in inspector's service city.
+  ///
+  /// The update is scoped to the caller's own row by RLS. The in-memory profile
+  /// is patched in place rather than refetched, so the job board header, the
+  /// profile tab and — after the caller invalidates it — the board itself all
+  /// reflect the new city without a round trip.
+  Future<void> updateCity(String city) async {
+    await ref.read(authRepositoryProvider).updateCity(city);
+    final UserProfile? current = state.value;
+    if (current == null) return;
+    state = AsyncData(current.copyWith(locationCity: city.trim()));
+  }
 }

@@ -10,7 +10,9 @@ import 'package:moaen/features/inspections/domain/inspection_request.dart';
 import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
 import 'package:moaen/features/inspections/presentation/inspector_job_detail_page.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
+import 'package:moaen/features/cities/application/city_controller.dart';
 
+import '../../support/fake_cities.dart';
 import '../../support/fake_inspection_repository.dart';
 
 /// Layout assertions for the inspector screens under the Arabic, right-to-left
@@ -52,6 +54,7 @@ Widget _arabic(FakeInspectionRepository repository, Widget child) =>
         inspectionRepositoryProvider.overrideWithValue(repository),
         authControllerProvider.overrideWith(_StubAuthController.new),
         localeProvider.overrideWithValue(const Locale('ar')),
+        citiesProvider.overrideWith((Ref ref) async => testCities),
       ],
       child: MaterialApp(
         locale: const Locale('ar'),
@@ -71,6 +74,7 @@ Widget _english(FakeInspectionRepository repository, Widget child) =>
         inspectionRepositoryProvider.overrideWithValue(repository),
         authControllerProvider.overrideWith(_StubAuthController.new),
         localeProvider.overrideWithValue(const Locale('en')),
+        citiesProvider.overrideWith((Ref ref) async => testCities),
       ],
       child: MaterialApp(
         locale: const Locale('en'),

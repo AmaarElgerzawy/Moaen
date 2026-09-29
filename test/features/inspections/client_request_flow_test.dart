@@ -17,7 +17,10 @@ import 'package:moaen/features/inspections/presentation/create_request_page.dart
 import 'package:moaen/features/inspections/presentation/my_requests_page.dart';
 import 'package:moaen/features/inspections/presentation/request_detail_page.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
+import 'package:moaen/features/cities/application/city_controller.dart';
+import 'package:moaen/features/cities/presentation/city_picker.dart';
 
+import '../../support/fake_cities.dart';
 import '../../support/fake_inspection_repository.dart';
 
 /// Widget tests for the three client screens.
@@ -55,6 +58,9 @@ Widget _app(
     inspectionRepositoryProvider.overrideWithValue(repository),
     authControllerProvider.overrideWith(_StubAuthController.new),
     localeProvider.overrideWithValue(locale),
+    // The create form asks for the city via the canonical-city picker, which
+    // reads the city list; overridden so the picker never reaches a network.
+    citiesProvider.overrideWith((Ref ref) async => testCities),
   ],
   child: MaterialApp(
     locale: locale,
@@ -72,6 +78,7 @@ Widget _flowApp(FakeInspectionRepository repository) => ProviderScope(
     inspectionRepositoryProvider.overrideWithValue(repository),
     authControllerProvider.overrideWith(_StubAuthController.new),
     localeProvider.overrideWithValue(const Locale('en')),
+    citiesProvider.overrideWith((Ref ref) async => testCities),
   ],
   child: MaterialApp.router(
     locale: const Locale('en'),
@@ -132,7 +139,7 @@ void main() {
       await _pump(tester,   _app(FakeInspectionRepository(), child: const ClientDashboardPage()));
 
       expect(find.text('No active request'), findsOneWidget);
-      expect(find.text('Request an inspection'), findsWidgets);
+      expect(find.text('Request now'), findsOneWidget);
     });
 
     testWidgets('shows the active request by its reference number', (
@@ -299,10 +306,7 @@ void main() {
       await _pump(tester, _app(repo, child: const CreateRequestPage()));
 
       await _fillValidForm(tester);
-      await tester.enterText(
-        find.widgetWithText(TextFormField, _city),
-        'Giza',
-      );
+      await _selectCity(tester, 'Giza');
       await tester.enterText(
         find.widgetWithText(TextFormField, _budget),
         '750',
@@ -537,7 +541,7 @@ void main() {
 
       expect(find.text('No active request'), findsOneWidget);
 
-      await tester.tap(find.text('Request an inspection').first);
+      await tester.tap(find.text('Request now'));
       await tester.pumpAndSettle();
       expect(find.byType(CreateRequestPage), findsOneWidget);
 
@@ -566,9 +570,23 @@ Future<void> _fillValidForm(
   await enter(_year, '2019');
   await enter(_phone, '+201000000001');
   await enter(_address, '12 Nile Street');
-  await enter(_city, 'Cairo');
+  await _selectCity(tester, 'Cairo');
   await enter(_budget, '500');
   if (withNotes) await enter(_notes, 'Call before going');
+  await tester.pumpAndSettle();
+}
+
+/// Chooses a city through the canonical-city picker: taps the field to open the
+/// sheet, then the option. The field may be below the fold on a tall form, so it
+/// is scrolled into view first — `tap` on an off-screen target silently does
+/// nothing.
+Future<void> _selectCity(WidgetTester tester, String city) async {
+  await tester.ensureVisible(find.byType(CityPicker));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byType(CityPicker));
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.text(city).last);
   await tester.pumpAndSettle();
 }
 
@@ -584,7 +602,6 @@ const String _model = 'Model';
 const String _year = 'Year';
 const String _phone = 'Seller phone';
 const String _address = 'Where is the car?';
-const String _city = 'City';
 const String _budget = 'Your budget (EGP)';
 
 /// The notes field is labelled by its instruction, which doubles as its hint.

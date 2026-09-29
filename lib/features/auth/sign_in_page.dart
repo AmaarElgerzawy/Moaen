@@ -11,6 +11,7 @@ import '../auth/auth_failure_localizations.dart';
 import '../auth/auth_repository.dart';
 import '../auth/user_profile.dart';
 import '../auth/user_role_localizations.dart';
+import '../cities/presentation/city_picker.dart';
 
 /// Sign in, or create an account.
 ///
@@ -30,7 +31,12 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   final TextEditingController _password = TextEditingController();
   final TextEditingController _fullName = TextEditingController();
   final TextEditingController _phone = TextEditingController();
-  final TextEditingController _city = TextEditingController();
+
+  /// The chosen canonical service city, for an inspector registering.
+  ///
+  /// A value rather than a controller: the city comes from the [CityPicker]
+  /// sheet, not from typing, so there is no cursor to own.
+  String? _serviceCity;
 
   bool _registering = false;
   bool _obscurePassword = true;
@@ -42,7 +48,6 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     _password.dispose();
     _fullName.dispose();
     _phone.dispose();
-    _city.dispose();
     super.dispose();
   }
 
@@ -59,7 +64,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         fullName: _fullName.text,
         role: _role,
         phone: _phone.text,
-        city: _city.text,
+        city: _role == UserRole.inspector ? _serviceCity : null,
       );
     } else {
       await ref
@@ -176,14 +181,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       ),
                       if (_role == UserRole.inspector) ...<Widget>[
                         const SizedBox(height: AppSpacing.lg),
-                        TextFormField(
-                          controller: _city,
-                          textInputAction: TextInputAction.next,
-                          textCapitalization: TextCapitalization.words,
-                          decoration: InputDecoration(
-                            labelText: l10n.fieldServiceCity,
-                            helperText: l10n.helperServiceCity,
-                          ),
+                        CityPicker(
+                          label: l10n.fieldServiceCity,
+                          helperText: l10n.helperServiceCity,
+                          onChanged: (String city) =>
+                              setState(() => _serviceCity = city),
                           validator: Validators.city,
                         ),
                       ],

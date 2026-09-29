@@ -212,11 +212,17 @@ void main() {
         'a client can read inspector profiles through the view',
         () async {
           await harness.asUser(clientA);
-          // Two inspectors exist, and neither of them is reachable through
-          // public.users by this client.
+          // Neither fixture inspector is reachable through public.users by
+          // this client, so the only way to see them is the view. The exact
+          // row count is intentionally not asserted: the live project may hold
+          // real inspectors of its own, which would move the total. What must
+          // hold is that the fixtures — whoever else exists — are visible.
+          final Result rows = await harness.db.execute(
+            'select id from public.inspector_profiles',
+          );
           expect(
-            await harness.count('select * from public.inspector_profiles'),
-            2,
+            rows.map((row) => row[0]),
+            containsAll(<Object>[inspectorCairo, inspectorAlex]),
           );
         },
       );

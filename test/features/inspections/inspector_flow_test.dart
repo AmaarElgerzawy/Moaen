@@ -5,7 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:moaen/core/localization/locale_provider.dart';
 import 'package:moaen/core/theme/app_theme.dart';
 import 'package:moaen/features/auth/auth_controller.dart';
+import 'package:moaen/features/auth/auth_repository.dart';
 import 'package:moaen/features/auth/user_profile.dart';
+import 'package:moaen/features/cities/application/city_controller.dart';
+import 'package:moaen/features/cities/presentation/city_picker.dart';
 import 'package:moaen/features/inspections/application/inspection_controller.dart';
 // Not transitive from the fake: Dart imports are per-library, so a test that
 // constructs an `InspectionFailure` has to name where it comes from.
@@ -15,6 +18,8 @@ import 'package:moaen/features/inspections/presentation/inspector_home_page.dart
 import 'package:moaen/features/inspections/presentation/inspector_job_detail_page.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
 
+import '../../support/fake_auth_repository.dart';
+import '../../support/fake_cities.dart';
 import '../../support/fake_inspection_repository.dart';
 
 /// Widget tests for the inspector side: the job board, the jobs list, the
@@ -61,11 +66,25 @@ Widget _app(
   FakeInspectionRepository repository, {
   required Widget child,
   Locale locale = const Locale('en'),
+  AuthRepository? authRepository,
 }) => ProviderScope(
   overrides: [
     inspectionRepositoryProvider.overrideWithValue(repository),
     authControllerProvider.overrideWith(_StubAuthController.new),
+    // The profile tab can change the service city, which routes through the
+    // auth repository. The default fake records the call instead of touching a
+    // network; tests that care pass their own instance.
+    authRepositoryProvider.overrideWithValue(
+      authRepository ??
+          FakeAuthRepository(
+            profile: _signedInInspector,
+            userId: _signedInInspector.id,
+          ),
+    ),
     localeProvider.overrideWithValue(locale),
+    // The city editor opens the canonical-city picker, which reads the city
+    // list; overridden so the picker never reaches a network.
+    citiesProvider.overrideWith((Ref ref) async => testCities),
   ],
   child: MaterialApp(
     locale: locale,
@@ -82,7 +101,14 @@ Widget _flowApp(FakeInspectionRepository repository) => ProviderScope(
   overrides: [
     inspectionRepositoryProvider.overrideWithValue(repository),
     authControllerProvider.overrideWith(_StubAuthController.new),
+    authRepositoryProvider.overrideWithValue(
+      FakeAuthRepository(
+        profile: _signedInInspector,
+        userId: _signedInInspector.id,
+      ),
+    ),
     localeProvider.overrideWithValue(const Locale('en')),
+    citiesProvider.overrideWith((Ref ref) async => testCities),
   ],
   child: MaterialApp.router(
     locale: const Locale('en'),
@@ -487,6 +513,56 @@ void main() {
       expect(find.text('Cairo'), findsWidgets);
       expect(find.text('4.50'), findsOneWidget);
       expect(find.text(l10n.actionSignOut), findsOneWidget);
+    });
+
+    testWidgets('changing the service city updates the profile and the board', (
+      WidgetTester tester,
+    ) async {
+      final FakeAuthRepository auth = FakeAuthRepository(
+        profile: _signedInInspector,
+        userId: _signedInInspector.id,
+      );
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[
+          buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Cairo'),
+        ],
+      );
+      await _pump(
+        tester,
+        _app(
+          repository,
+          child: const InspectorHomePage(),
+          authRepository: auth,
+        ),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      // The board is scoped to the profile's city before anything is edited.
+      expect(find.text(l10n.boardTitle('Cairo')), findsOneWidget);
+
+      await tester.tap(find.text(l10n.navProfile));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l10n.profileEditCity));
+      await tester.pumpAndSettle();
+
+      // Open the picker sheet inside the dialog, then pick a different city.
+      await tester.tap(find.byType(CityPicker).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Giza').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, l10n.actionSave));
+      await tester.pumpAndSettle();
+
+      expect(auth.updatedCities, <String>['Giza']);
+      expect(find.text(l10n.profileCityUpdated), findsOneWidget);
+      // The profile row now shows the new canonical city.
+      expect(find.text('Giza'), findsWidgets);
+
+      // The board header follows the new service city.
+      await tester.tap(find.text(l10n.navJobBoard));
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.boardTitle('Giza')), findsOneWidget);
+      expect(find.text(l10n.boardTitle('Cairo')), findsNothing);
     });
 
     testWidgets('an inspector without ratings is told so', (

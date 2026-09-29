@@ -146,6 +146,26 @@
   "inspectorSettledNote": "هذه المعاينة منتهية.",
   "profileCityNotSet": "لم تُحدد مدينة خدمة.",
 
+  "heroTitle": "فحص سيارة جديدة",
+  "heroBody": "يفحص معاين معتمد السيارة في مكانها ويرسل لك تقريرًا شاملاً.",
+  "heroAction": "اطلب الآن",
+
+  "createCityHelper": "يظهر الطلب لمعاينين في هذه المدينة فقط.",
+
+  "cityPickerTitle": "اختر المدينة",
+  "cityPickerSearchHint": "ابحث عن مدينة",
+  "cityPickerEmpty": "لا توجد مدن مطابقة",
+  "cityPickerLoadError": "تعذر تحميل قائمة المدن.",
+
+  "profileEditCity": "تغيير مدينة الخدمة",
+  "profileCityUpdated": "تم تحديث مدينة الخدمة.",
+
+  "actionCancel": "إلغاء",
+  "actionSave": "حفظ",
+
+  "boardLive": "مباشر",
+  "boardEmptyHint": "إذا كانت المدينة غير صحيحة، غيّر مدينة خدمتك من صفحة ملفك.",
+
   "errorRequired": "هذا الحقل مطلوب",
   "errorInvalidYear": "أدخل سنة بين 1950 و2100",
   "errorInvalidPhone": "أدخل رقم هاتف صحيح",

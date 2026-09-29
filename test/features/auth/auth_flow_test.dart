@@ -13,7 +13,9 @@ import 'package:moaen/features/inspections/application/inspection_controller.dar
 import 'package:moaen/features/inspections/domain/inspection_request.dart';
 import 'package:moaen/features/inspections/presentation/client_dashboard_page.dart';
 import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
+import 'package:moaen/features/cities/application/city_controller.dart';
 
+import '../../support/fake_cities.dart';
 import '../../support/test_client.dart';
 
 /// An [AuthRepository] with no network behind it.
@@ -101,6 +103,9 @@ Widget _app(FakeAuthRepository repository) => ProviderScope(
     // states.
     jobBoardProvider.overrideWith((Ref ref) async => const <InspectionRequest>[]),
     myJobsProvider.overrideWith((Ref ref) async => const <InspectionRequest>[]),
+    // The register form's city field is the canonical-city picker, which reads
+    // the city list; overridden so the picker never reaches the fake client.
+    citiesProvider.overrideWith((Ref ref) async => testCities),
   ],
   child: const MoaenApp(),
 );

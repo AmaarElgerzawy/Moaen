@@ -183,6 +183,29 @@ class AuthRepository {
     }
   }
 
+  /// Updates the caller's own service city.
+  ///
+  /// The row is scoped by the session's own id (`users_update_self` RLS), so
+  /// this can only ever touch the signed-in user's profile — the same
+  /// guarantee [loadProfile] reads with. The value is written verbatim; the
+  /// canonical-city Picker on the other end is what keeps it a valid board
+  /// match, so there is nothing to normalise here.
+  Future<void> updateCity(String city) async {
+    final String? userId = currentUserId;
+    if (userId == null) {
+      throw const AuthFailure(AuthFailureReason.profileUnavailable);
+    }
+    try {
+      await _client
+          .from('users')
+          .update(<String, dynamic>{'location_city': city.trim()})
+          .eq('id', userId);
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('service city update failed', error, stackTrace);
+      throw const AuthFailure(AuthFailureReason.profileUnavailable);
+    }
+  }
+
   /// Records an auth failure with the fields that actually identify it.
   ///
   /// [AuthException.code] is the one that matters: `error.message` is prose

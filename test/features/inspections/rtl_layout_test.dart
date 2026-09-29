@@ -13,7 +13,9 @@ import 'package:moaen/features/inspections/presentation/create_request_page.dart
 import 'package:moaen/features/inspections/presentation/my_requests_page.dart';
 import 'package:moaen/features/inspections/presentation/request_detail_page.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
+import 'package:moaen/features/cities/application/city_controller.dart';
 
+import '../../support/fake_cities.dart';
 import '../../support/fake_inspection_repository.dart';
 
 /// Layout assertions for the Arabic, right-to-left presentation.
@@ -64,6 +66,7 @@ Widget _arabic(FakeInspectionRepository repository, Widget child) =>
         inspectionRepositoryProvider.overrideWithValue(repository),
         authControllerProvider.overrideWith(_StubAuthController.new),
         localeProvider.overrideWithValue(const Locale('ar')),
+        citiesProvider.overrideWith((Ref ref) async => testCities),
       ],
       child: MaterialApp(
         locale: const Locale('ar'),
@@ -83,6 +86,7 @@ Widget _english(FakeInspectionRepository repository, Widget child) =>
         inspectionRepositoryProvider.overrideWithValue(repository),
         authControllerProvider.overrideWith(_StubAuthController.new),
         localeProvider.overrideWithValue(const Locale('en')),
+        citiesProvider.overrideWith((Ref ref) async => testCities),
       ],
       child: MaterialApp(
         locale: const Locale('en'),
@@ -278,15 +282,15 @@ void main() {
       final Rect button = tester.getRect(
         find.widgetWithText(FilledButton, l10n.createSubmit),
       );
-      final Rect field = tester.getRect(
-        find.widgetWithText(TextFormField, l10n.fieldCarMake),
-      );
+      final Rect page = tester.getRect(find.byType(Scaffold).first);
 
-      // Full width, so it does not read as belonging to a left-hand column.
-      expect(
-        (button.width - field.width).abs(),
-        lessThan(field.width * 0.05),
-      );
+      // Full width, so it does not read as belonging to a left-hand column. The
+      // fields moved inside section cards (which inset them further than the
+      // page padding), so the button is compared against the page rather than a
+      // field: what must hold is that the CTA spans the *form's* width.
+      expect(page.right - button.right, lessThan(page.width * 0.12));
+      expect(button.left - page.left, lessThan(page.width * 0.12));
+      expect(button.width, greaterThan(page.width * 0.75));
     });
   });
 

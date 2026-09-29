@@ -48,9 +48,15 @@ class ClientDashboardPage extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           children: <Widget>[
-            Text(
-              l10n.dashboardGreeting(auth.value?.fullName ?? ''),
-              style: Theme.of(context).textTheme.headlineSmall,
+            // Dark greeting banner: the slate hero from the design, with the
+            // buyer's initial avatar so the header reads as *their* space.
+            _GreetingBanner(name: auth.value?.fullName ?? ''),
+            const SizedBox(height: AppSpacing.lg),
+            _HeroBanner(
+              title: l10n.heroTitle,
+              body: l10n.heroBody,
+              action: l10n.heroAction,
+              onRequest: () => context.pushNamed('createRequest'),
             ),
             const SizedBox(height: AppSpacing.lg),
             active.when(
@@ -70,12 +76,6 @@ class ClientDashboardPage extends ConsumerWidget {
                   ? const _NoActiveRequest()
                   : _ActiveRequestCard(request: request),
             ),
-            const SizedBox(height: AppSpacing.lg),
-            OutlinedButton.icon(
-              onPressed: () => context.pushNamed('createRequest'),
-              icon: const Icon(Icons.add),
-              label: Text(l10n.dashboardNewRequest),
-            ),
             const SizedBox(height: AppSpacing.sm),
             TextButton.icon(
               onPressed: () => context.pushNamed('myRequests'),
@@ -84,6 +84,122 @@ class ClientDashboardPage extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The dark greeting banner over the dashboard.
+class _GreetingBanner extends StatelessWidget {
+  const _GreetingBanner({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final String initial = name.isEmpty ? '?' : name.substring(0, 1).toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.slate,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Row(
+        children: <Widget>[
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            child: Text(
+              initial,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Text(
+              l10n.dashboardGreeting(name),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The emerald action banner: the one place a buyer starts a new inspection.
+class _HeroBanner extends StatelessWidget {
+  const _HeroBanner({
+    required this.title,
+    required this.body,
+    required this.action,
+    required this.onRequest,
+  });
+
+  final String title;
+  final String body;
+  final String action;
+  final VoidCallback onRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.emerald,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.directions_car_outlined,
+                color: Colors.white.withValues(alpha: 0.9),
+                size: 34,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            body,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          SizedBox(
+            width: double.infinity,
+            // The white-on-emerald inversion is the design's hero CTA: on the
+            // dark-green banner the button is white with the brand green text.
+            child: FilledButton(
+              onPressed: onRequest,
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.emerald,
+              ),
+              child: Text(action),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -104,19 +220,27 @@ class _ActiveRequestCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              // Status-aware, because the card now shows the most recent
-              // request whatever its status. A completed inspection labelled
-              // "your active request" is telling the buyer their finished
-              // report is still in progress.
-              switch (request.status) {
-                InspectionStatus.completed => l10n.dashboardReportReadyTitle,
-                InspectionStatus.cancelled => l10n.dashboardCancelledTitle,
-                _ => l10n.dashboardActiveTitle,
-              },
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    // Status-aware, because the card now shows the most recent
+                    // request whatever its status. A completed inspection
+                    // labelled "your active request" is telling the buyer their
+                    // finished report is still in progress.
+                    switch (request.status) {
+                      InspectionStatus.completed => l10n.dashboardReportReadyTitle,
+                      InspectionStatus.cancelled => l10n.dashboardCancelledTitle,
+                      _ => l10n.dashboardActiveTitle,
+                    },
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                StatusChip(status: request.status, dense: true),
+              ],
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
@@ -143,8 +267,6 @@ class _ActiveRequestCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: AppSpacing.lg),
-            StatusChip(status: request.status),
-            const SizedBox(height: AppSpacing.lg),
             _ProgressTrack(status: request.status),
             const SizedBox(height: AppSpacing.lg),
             const Divider(height: 1),
@@ -153,7 +275,7 @@ class _ActiveRequestCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.lg),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.tonal(
+              child: FilledButton(
                 onPressed: () => context.pushNamed(
                   'requestDetail',
                   pathParameters: <String, String>{'id': request.id},
@@ -168,7 +290,7 @@ class _ActiveRequestCard extends StatelessWidget {
   }
 }
 
-/// The four states a request passes through, as a row of dots.
+/// The four states a request passes through, as a vertical timeline.
 ///
 /// Driven by [InspectionRequest.status] rather than by anything the client
 /// infers: the inspector's actions are what move the request, and the app
@@ -228,110 +350,100 @@ class _ProgressTrack extends StatelessWidget {
           style: Theme.of(context).textTheme.labelLarge,
         ),
         const SizedBox(height: AppSpacing.md),
-        // Dots and labels are two rows, not one row of columns.
-        //
-        // A `Row` hands its non-flex children *unbounded* main-axis constraints,
-        // so a `Column` holding a label takes the label's full intrinsic width —
-        // which is wider than a quarter of the card, and overflows. The English
-        // labels happened to fit; the Arabic ones are longer, and this is
-        // exactly the class of defect that shows up in Arabic and not in English.
-        //
-        // Splitting the rows gives the labels a tight quarter-width each, so
-        // `Text` wraps and ellipsises inside the slot it was given. The dots keep
-        // their natural size and the connectors stay flexible.
-        Row(
-          children: <Widget>[
-            for (int i = 0; i < labels.length; i++) ...<Widget>[
-              if (i > 0) _Connector(reached: step >= i),
-              _Dot(reached: step >= 0 && i <= step),
-            ],
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            for (int i = 0; i < labels.length; i++)
-              Expanded(
-                child: _StepLabel(
-                  label: labels[i],
-                  reached: step >= 0 && i <= step,
-                ),
-              ),
-          ],
-        ),
+        for (int i = 0; i < labels.length; i++)
+          _StepRow(
+            label: labels[i],
+            reached: step >= 0 && i <= step,
+            number: i + 1,
+            // The connector hangs below every circle but the last.
+            showConnector: i < labels.length - 1,
+            connectorReached: step >= 0 && i < step,
+          ),
       ],
     );
   }
 }
 
-/// The line between two dots.
-///
-/// Drawn on the trailing side of every dot except the last, so the track reads
-/// in the ambient direction without any direction logic here: under RTL the `Row`
-/// reverses and the line lands on the correct side of each dot on its own.
-class _Connector extends StatelessWidget {
-  const _Connector({required this.reached});
-
-  final bool reached;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        height: 2,
-        color: reached
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.outlineVariant,
-      ),
-    );
-  }
-}
-
-/// One step's dot.
-class _Dot extends StatelessWidget {
-  const _Dot({required this.reached});
-
-  final bool reached;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
-    final Color border = reached ? colors.primary : colors.outlineVariant;
-
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: BoxDecoration(
-        color: reached ? colors.primary : Colors.transparent,
-        border: Border.all(color: border, width: 2),
-        shape: BoxShape.circle,
-      ),
-      child: reached ? Icon(Icons.check, size: 12, color: colors.onPrimary) : null,
-    );
-  }
-}
-
-/// One step's label, in its own quarter-width slot.
-class _StepLabel extends StatelessWidget {
-  const _StepLabel({required this.label, required this.reached});
+/// One rung of the vertical timeline: a status circle with the connector line
+/// beneath it, and the label beside it.
+class _StepRow extends StatelessWidget {
+  const _StepRow({
+    required this.label,
+    required this.reached,
+    required this.number,
+    required this.showConnector,
+    required this.connectorReached,
+  });
 
   final String label;
   final bool reached;
+  final int number;
+  final bool showConnector;
+  final bool connectorReached;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
 
-    return Text(
-      label,
-      textAlign: TextAlign.center,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-        color: reached ? colors.onSurface : colors.onSurfaceVariant,
-        fontWeight: reached ? FontWeight.w700 : FontWeight.w400,
-      ),
+    // A `Row` hands its non-flex children *unbounded* main-axis constraints, so
+    // the label column must be the flexing side (Expanded) and the circle
+    // column stays at its intrinsic width — the same rule that governs every
+    // icon-plus-text row on these screens under RTL.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Column(
+          children: <Widget>[
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: reached ? colors.primary : Colors.transparent,
+                border: Border.all(
+                  color: reached ? colors.primary : colors.outlineVariant,
+                  width: 2,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: reached
+                  ? Icon(Icons.check, size: 14, color: colors.onPrimary)
+                  : Center(
+                      child: Text(
+                        '$number',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+            ),
+            if (showConnector) ...<Widget>[
+              const SizedBox(height: 4),
+              Container(
+                width: 2,
+                height: 24,
+                color: connectorReached
+                    ? colors.primary
+                    : colors.outlineVariant,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: reached ? colors.onSurface : colors.onSurfaceVariant,
+                fontWeight: reached ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -358,34 +470,44 @@ class _CostBreakdown extends StatelessWidget {
       travelFee: 0,
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          l10n.costTitle,
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _CostRow(label: l10n.costInspection, value: estimate.inspectionFee),
-        _CostRow(
-          label: l10n.costTravel,
-          value: estimate.travelFee,
-          freeWhenZero: true,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        _CostRow(
-          label: l10n.costTotal,
-          value: estimate.total,
-          emphasise: true,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          l10n.costEstimateNotice,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+    return Container(
+      // The same light-green estimate surface as the create form's box, so the
+      // number a buyer approved and the number on the tracker both live on the
+      // same visual surface.
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.successSurface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            l10n.costTitle,
+            style: Theme.of(context).textTheme.labelLarge,
           ),
-        ),
-      ],
+          const SizedBox(height: AppSpacing.sm),
+          _CostRow(label: l10n.costInspection, value: estimate.inspectionFee),
+          _CostRow(
+            label: l10n.costTravel,
+            value: estimate.travelFee,
+            freeWhenZero: true,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          _CostRow(
+            label: l10n.costTotal,
+            value: estimate.total,
+            emphasise: true,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            l10n.costEstimateNotice,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -427,7 +549,10 @@ class _CostRow extends StatelessWidget {
           Text(
             shown,
             style: emphasise
-                ? text.titleSmall?.copyWith(fontWeight: FontWeight.w800)
+                ? text.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.emerald,
+                  )
                 : text.bodyMedium,
           ),
         ],

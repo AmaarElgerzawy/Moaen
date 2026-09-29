@@ -3,7 +3,7 @@
 > Remote car-inspection marketplace. A buyer in one city hires a certified local
 > inspector to examine a vehicle and receive a report before travelling to buy it.
 >
-> **Last updated:** 2026-09-29 · **Phase:** 2 — the client request flow *and* the inspector flow (city-scoped job board, my jobs, profile, accept → start → complete) are built and tested: **188/188 with `MOAEN_DB_URL`**, `flutter analyze` clean. Only the device smoke test (M5) remains, pending an Android emulator.
+> **Last updated:** 2026-09-29 · **Phase:** 2 — the client request flow *and* the inspector flow (city-scoped job board, my jobs, profile, accept → start → complete) are built and tested, the city-matching bug is fixed (P10 — canonical city list, both sides pick instead of type), and the Client & Inspector UI has been restyled to the six-screen design spec. **189/189 with `MOAEN_DB_URL`**, `flutter analyze` clean. Only the device smoke test (M5) remains, pending an Android emulator.
 > **Rule:** update this file in the same change as any code it describes.
 
 ---
@@ -29,7 +29,7 @@ and GitHub releases. Deprecated APIs and channels (`beta`, `dev`) rejected.
 `flutter: >=3.44.0` and `flutter_riverpod` 3.4.3 declares `sdk: ^3.12.0`. Neither
 resolves on the 3.41.0 / Dart 3.11.0 that was installed.
 
-**Supabase over Firebase** (the brief allowed either). The domain is a 5-table
+**Supabase over Firebase** (the brief allowed either). The domain is a 6-table
 relational graph with 5 foreign keys; Postgres enforces referential integrity in
 the engine, while Firestore cannot enforce an FK and would admit orphaned
 reports and payments. The RLS requirement is likewise native to Postgres and only
@@ -167,6 +167,10 @@ lib/
   features/
     auth/  user_profile · auth_repository · auth_controller · sign_in_page
            user_role_localizations
+    cities/
+      data/         city_repository             City list over public.cities
+      application/  city_controller             cityRepositoryProvider · citiesProvider
+      presentation/ city_picker.dart            CityPicker + searchable _CitySheet
     home/  role_landing_page
     inspections/
       data/         inspection_repository      all car_inspections I/O + 3 enforced transitions
@@ -183,6 +187,10 @@ supabase/
   migrations/0001_schema.sql      types, tables, indexes, invariant triggers
   migrations/0002_rls.sql         auth provisioning, helpers, RLS, profiles view
   migrations/0003_storage.sql     private buckets + object policies
+  migrations/0004_reference_number.sql   server-assigned reference_no + client_notes
+  migrations/0005_cities.sql      canonical Egyptian city list (P10); the one
+                                  deliberate anon SELECT, because the picker
+                                  is on the pre-auth sign-up form
   config.toml
 test/
   core/localization_test.dart     RTL default, fallback, translation coverage
@@ -191,9 +199,13 @@ test/
   features/inspections/client_request_flow_test.dart · rtl_layout_test.dart
   features/inspections/inspector_flow_test.dart · inspector_rtl_layout_test.dart
   support/fake_inspection_repository.dart · test_client.dart
+  support/fake_auth_repository.dart  records updateCity so a profile edit is assertable
+  support/fake_cities.dart          the shared four-city picker fixture
   integration/rls_policies_test.dart   O2/O3/O4, against the live project
 tool/
   dart_defines.local.json         gitignored, optional client override (D6)
+  apply_migration.dart            applies a migration file in one transaction (D12)
+  set_profile_city.dart           repairs an inspector's stored city from the shell
 l10n.yaml                         gen-l10n config; ARB in, Dart into lib/l10n/gen
 dart_test.yaml                    declares the `integration` tag
 ```
@@ -209,12 +221,12 @@ Verified by querying the catalog of the live project after `supabase db push`:
 
 | Property | Expected | Live |
 |---|---|---|
-| Migrations applied | 0001, 0002, 0003 | 0001, 0002, 0003, 0004 |
-| Tables | 5 | 5 (+ `inspector_profiles` view) |
-| Primary keys | 5 | 5 |
+| Migrations applied | 0001–0005 | 0001, 0002, 0003, 0004, 0005 |
+| Tables | 6 | 6 (+ `inspector_profiles` view) |
+| Primary keys | 6 | 6 |
 | Foreign keys | 5 among app tables | 6 — the sixth is `users.id → auth.users.id` |
-| RLS enabled | all 5 | all 5 |
-| Policies | — | 13 |
+| RLS enabled | all 6 | all 6 |
+| Policies | — | 14 |
 | Triggers | 2 in `public` | 3 in `public` + 1 on `auth.users` |
 | Storage buckets | 2 private | 2, both `public = false` |
 
@@ -236,8 +248,14 @@ media, CASCADE), money and inspection history survive (RESTRICT). Deleting a
 user who has taken part in an inspection is therefore refused, which is the
 intended behaviour — that history is the product.
 
-No `cities` reference table. `city` is free text and the board matches it
-case-insensitively; normalising it waits until a second consumer needs a list.
+`cities` is the one reference table, and it exists because of a bug rather than a
+design preference (P10, D17). `city` and `location_city` are still free-text
+columns with no CHECK and no foreign key — locking them would mean migrating every
+existing row and constraining a column clients can already write, which would not
+improve matching, because the app now always writes a canonical `name_ar`. The
+guarantee is made at the *input* boundary instead: both the buyer and the inspector
+pick from the same 32-row list, so `lower(btrim(city)) = lower(btrim(city))` is
+equality of one stored value.
 
 ### Security design
 
@@ -286,6 +304,17 @@ case-insensitively; normalising it waits until a second consumer needs a list.
    scaffolded `Allow public…` policy on `storage.objects`, which would otherwise
    OR its way past the policies below it.
 
+7. **`cities` is the one table `anon` may read, deliberately.** Everything else in
+   the project grants `anon` nothing, and the RLS suite still asserts that. The
+   exception exists because the city picker sits on the *sign-up* form, which runs
+   before a session exists — without it an inspector could not pick a service city
+   while registering, which is the exact bug P10 fixes. What is exposed is public
+   reference data (32 Egyptian city names), the way any registration form ships a
+   country list; no user, request, report or payment row is reachable. *Verified
+   live: the suite's `anon has no access to any table` test still passes, and
+   `information_schema.role_table_grants` shows exactly one `anon` SELECT in
+   `public` — on `cities`.*
+
 ### How the RLS policies are actually proven
 
 `test/integration/rls_policies_test.dart` — **28 assertions, all executed against
@@ -319,7 +348,14 @@ obstacle:
   a real developer account in `public.users` made it 6). It now asserts visibility
   of all five *fixture* profiles (four of them not the admin's own) plus a count
   greater than one, proving whole-population visibility without depending on what
-  the project has accumulated.
+  the project has accumulated. The same trap fired a second time, independently, on
+  the profiles *view*: `a client can read inspector profiles through the view`
+  asserted `count(inspector_profiles) == 2`, which was true when the project held
+  no inspectors of its own and stopped being true the day a real inspector
+  registered. It now asserts the two fixture inspectors are present via
+  `containsAll` — the actual claim, that a client reaches inspectors through the
+  view while `users` stays closed to them. **A count is not a visibility claim**;
+  the moment a human can sign up, the count is no longer yours to assert.
 - **The reference-integrity assertions (D9) assert the value, not the absence of
   an error.** RLS *permits* a client to UPDATE its own row; the trigger discards
   the change. A test asserting only "no error was raised" would therefore pass
@@ -397,6 +433,41 @@ Only B3 stands between the project and M5.
 | D14 | **`AuthFailure` carries a reason, not a message.** It previously held an English sentence, which the sign-in banner rendered verbatim — so an Arabic build showed an English error, and nothing could be asserted about a failure except that *some* banner appeared. The repository now maps a server response to an `AuthFailureReason` and the presentation layer resolves that to a localized string. Three things follow. The repository stays free of the wording. The exact reason is a value a test can assert on and a log can record. And a *configuration* fault is distinguishable from a user error: `email_provider_disabled` is an operator mistake that no retry can clear, and presenting it as "Something went wrong. Please try again." is what made B4 look like a client bug for a day. `AuthFailure.detail` keeps the server's own wording for the log and is unreachable from the UI. The mapping matches on `AuthException.code` first — the stable contract — and falls back to message text, because GoTrue has renamed these strings across versions and an app pointed at an older server should still recognise `invalid login credentials` rather than degrade to a generic error. |
 | D15 | **The job board read takes no user id; the inspector's own jobs read takes it, and the difference is the point.** `listBoard()` takes no parameter because the board RLS policy already scopes to `pending` rows in the caller's `location_city` — a parameter that was accepted and then ignored would read as though the caller decides whose board this is. `listForInspector(profile.id)` passes the id because the participant RLS policy cannot tell which *side* of a request the caller was: an inspector who also buys cars holds both roles, and a row where they are the buyer must not appear in their jobs list. The narrowing cannot be abused to read a stranger's jobs — RLS still refuses any row the caller has no part in. |
 | D16 | **A status write that matches no row is read as a race, not guessed at.** Each transition updates then `.select().single()`, so a zero-row update (the loser of a claim, a request cancelled mid-read) surfaces as PGRST116 instead of silently succeeding. Accept maps it to "another inspector just took this request"; start/complete map it to "no longer in that state". The trigger stays the authority on legality: a page that offers the wrong action can still never move a request illegally — the database refuses, and the page just has to say why. |
+| D17 | **The city is chosen, never typed (P10).** The board is filtered by
+   `lower(btrim(city)) = lower(btrim(location_city))`, and both columns were free
+   text. A buyer who wrote "Cairo" and an inspector who registered "دولي" were
+   two different strings, so the request was invisible to the one person it was
+   meant for — with no error anywhere, because the query is correct and the data
+   is simply different. The alternatives were rejected on their own terms: a
+   `CHECK` against a city table would reject every existing row that had already
+   been typed free-form; a foreign key would constrain a column the client can
+   already write, and matching would still depend on the client sending the right
+   string. Making both sides *select* from one list removes the class of bug
+   rather than the instance. Three consequences follow. The stored value is the
+   Arabic `name_ar` — the product is Arabic-first (D7), and the value is never
+   shown to an English user except through the board title, which is localized
+   separately. An inspector can correct a wrong city from the profile tab without
+   support, because the picker they sign up with is the picker they fix it with.
+   And a real inspector whose city predates the migration (`location_city =
+   'دولي'`) was repaired directly in the database, since the app cannot change
+   what it was never given. *Verified live: a pending `القاهرة` request is now
+   visible on that inspector's board through the real RLS policy, verified inside
+   a transaction that rolls back.* |
+| D18 | **The visual language is the design spec, expressed as tokens.** D8 stands
+   (no Figma; the written brief and the six design screens are the reference), but
+   the palette is now fixed rather than implied: emerald `#00875A` as the single
+   accent, slate `#0D131A` for app bars and headers, `#F4F6F8` app background, white
+   cards at `BorderRadius.circular(16)` with a `#E5E9EB` border and no shadow, and
+   the four semantic surfaces the design names — success `#E6F4EA`, warning
+   `#FEF3D6`, cost `#E8F5E9`, live `#E5484D`. `ColorScheme.fromSeed` is seeded with
+   emerald and then overridden for `primary`, because the generated scheme shifts
+   the accent and the design does not shift. Two constraints came out of applying
+   it rather than from the design itself. The live badge's red dot is static, not
+   pulsing: an infinite animation never settles, and every `pumpAndSettle` in the
+   suite would time out — a motion the tests cannot tolerate is a motion that will
+   be removed eventually anyway. And the vertical progress tracker draws a check on
+   every *reached* step, matching the previous dot row's semantics exactly, so the
+   redesign changed no assertion's meaning. |
 
 ### Assumptions
 
@@ -424,7 +495,7 @@ Only B3 stands between the project and M5.
 | P7 | Notifications on status change. | No push provider selected. |
 | P8 | Inspector payouts. | Follows the D1 escrow outcome. |
 | P9 | Re-enable email confirmation for production. | Disabled for Phase 1 testing; **restore before any real launch**, since a confirmed address is the only thing standing between a typo and an account takeover. Independent of B4: the provider toggle is off *now*, and autoconfirm is a separate switch to restore at launch. |
-| P10 | Normalise `city` to a reference table. | Awaits a second consumer (A5/A2). |
+| P10 | ~~Normalise `city` to a reference table.~~ **done** — `public.cities` (0005, 32 Egyptian cities), a searchable `CityPicker` at sign-up, at request creation, and in the inspector's profile, plus `AuthController.updateCity`. The columns stay free text on purpose; see D17. The real inspector's stored city, which predates the picker, was repaired in the database and the match verified live through the real policy. |
 | P11 | **Release signing is unverified.** `flutter build apk --release` with no `key.properties` falls back to debug keys. A real keystore is required before distribution, and the build will look successful right up until it matters. |
 | P12 | **No screen has been seen on a real device** (B3). The RTL work is asserted from laid-out geometry rather than from a screenshot, which catches a number on the wrong edge but cannot catch a font that renders Arabic as boxes. | Needs an emulator. |
 | P13 | **Inspection write-failure messages are English, shown verbatim.** The buyer's cancel and the new inspector transitions surface `InspectionFailure.message` directly, so an Arabic build shows an English sentence on a write failure — the exact gap D14 closed for auth. It was deliberately left that way for the inspector work: fixing it properly is the D14 move again (a reason enum resolved through the ARB), and doing that during the flow build would have churned every existing client-flow assertion for no behaviour. | Do the D14 treatment: `InspectionFailureReason` + an ARB mapping, replacing the message strings in the repository and the snackbar call sites. Safe whenever, since it changes wording, not behaviour. |
@@ -439,7 +510,7 @@ Only B3 stands between the project and M5.
 | **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
 | **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 28/28 live |
-| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 157 unit/widget + 28 RLS + 4 live auth |
+| **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 158 unit/widget + 27 RLS + 4 live auth |
 | **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** — the sign-in half is now proven against live GoTrue, so only the on-device part is outstanding |
 | **M6** | Client request flow | Dashboard, create form, list and detail render in both locales; create/cancel reach the database | **met** — but see B3: it has never run on a device |
 | **M7** | Inspector flow | Job board (city-scoped), my jobs, profile tab, and accept → start → complete all render in both locales with the trigger's transitions enforced and the claim race reported | **met** — 21 new widget tests (15 flow + 6 Arabic-RTL geometry) riding on the live RLS proof; still never on a device (B3) |
@@ -466,17 +537,21 @@ dart run tool\diagnose_signup_trigger.dart
 # 6. remove any throwaway account a probe left behind
 dart run tool\cleanup_probe_accounts.dart
 
-# 7. client — no flags needed
+# 7. repair an inspector whose stored city predates the picker (P10) —
+#    prints the before/after city
+dart run tool\set_profile_city.dart <email> <canonical-city>
+
+# 8. client — no flags needed
 flutter pub get
 flutter run
 flutter test
 ```
 
-`flutter test` on its own reports 157 passing and 31 skipped: the RLS and live-auth
+`flutter test` on its own reports 158 passing and 31 skipped: the RLS and live-auth
 suites skip themselves when `MOAEN_DB_URL` is absent, so a developer with no database
 credential still gets a useful signal. A credential that is *present but wrong* is
-not skipped — it fails loudly. With the credential every one of the 188 runs
-(157 unit/widget + 28 RLS + 4 live auth).
+not skipped — it fails loudly. With the credential every one of the 189 runs
+(158 unit/widget + 27 RLS + 4 live auth) passes.
 
 The live auth suite needs the gate for a stronger reason than the RLS one: it reaches
 the network as well as the database, so without it a bare `flutter test` would make
@@ -547,6 +622,30 @@ themselves:
 - **Never type an Arabic string in a PowerShell assertion.** The console renders
   it as `??????` and the comparison fails for a reason that has nothing to do with
   the code. Read the value from the file instead.
+- **A `bash`/`cmd` `del /f` maps onto PowerShell's `del` alias** (`Remove-Item`),
+  which rejects `/f /q`; use `Remove-Item <path> -Force`. The same applies to any
+  other borrowed flag syntax.
+- **Tapping a floating `InputDecorator` label is unreliable; tap the field.** A
+  `TextFormField`'s label is positioned by the decorator, not laid out as a stable
+  child, and when the field sits at the bottom of the default 800×600 surface the
+  label's centre can land a hair outside the tappable region — `tap` then throws
+  "would not hit test on the specified widget". Selecting a city in the widget
+  tests taps `find.byType(CityPicker)` (with `ensureVisible`) rather than the
+  label text.
+- **A `FormField` renders a `TextFormField`, so `find.byType(TextFormField)`
+  excludes it.** The canonical-city `CityPicker` is a plain `FormField<String>`;
+  counting `TextFormField`s to index a form (as the sign-in test does) is correct
+  and must not be "fixed" to count pickers.
+- **A dialog's own state must be set from the picker's `onChanged`, or Save stays
+  disabled.** `FormField.didChange` updates the field, but a sibling `Save`
+  button that reads a `_selected` local only re-enables when *the dialog* rebuilds
+  — so the sheet updates and the button does not. The `onChanged` must call
+  `setState` on the dialog, not just assign the variable. Symptom: the sheet closes
+  correctly but `onPressed` is still `null`.
+- **`scrolledUnderElevationColor` is not a valid `AppBarTheme` parameter** in this
+  Flutter version; the app bar's scrolled-under tint comes from
+  `scrolledUnderElevation` / `surfaceTintColor`. Passing the colour directly is a
+  compile error, not a runtime one, so `flutter analyze` catches it.
 
 `tool/dart_defines.local.json` holds the project URL and the publishable key,
 both public by design, and is optional since D6. It stays gitignored as a matter

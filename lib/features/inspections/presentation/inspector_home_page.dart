@@ -8,6 +8,7 @@ import '../../../l10n/gen/app_localizations.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/user_profile.dart';
 import '../../auth/user_role_localizations.dart';
+import '../../cities/presentation/city_picker.dart';
 import '../application/inspection_controller.dart';
 import '../domain/inspection_request.dart';
 import 'widgets/request_widgets.dart';
@@ -98,23 +99,40 @@ class _BoardTab extends ConsumerWidget {
           return _CenteredMessage(
             title: l10n.boardEmptyTitle,
             body: l10n.boardEmptyBody(city),
+            caption: l10n.boardEmptyHint,
           );
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
+            // The dark board header: city title on the slate banner with the
+            // live badge, matching the design's dark "my city" chrome while the
+            // requests below sit on white cards.
+            Container(
+              margin: const EdgeInsets.fromLTRB(
                 AppSpacing.lg,
                 AppSpacing.lg,
                 AppSpacing.lg,
                 AppSpacing.sm,
               ),
-              child: Text(
-                l10n.boardTitle(city),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.slate,
+                borderRadius: BorderRadius.circular(AppRadius.card),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      l10n.boardTitle(city),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  _LiveBadge(label: l10n.boardLive),
+                ],
               ),
             ),
             Expanded(
@@ -143,6 +161,42 @@ class _BoardTab extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// The pulsing red "live" dot next to the board heading.
+///
+/// Static by design: the board already refreshes on pull, and an endlessly
+/// animating dot would also make every `pumpAndSettle` in the widget tests
+/// time out.
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Container(
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+            color: Color(0xFFE5484D),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Colors.white70,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -267,10 +321,92 @@ class _ProfileTab extends ConsumerWidget {
               : profile.rating.toStringAsFixed(2),
         ),
         const SizedBox(height: AppSpacing.xxl),
+        // Changing city is the one profile edit an inspector needs day-to-day:
+        // the board is scoped to it, so a move or a typo from sign-up shows up
+        // here instead of as a mysterious empty board.
+        FilledButton.tonalIcon(
+          onPressed: () => _editCity(context, ref),
+          icon: const Icon(Icons.location_city_outlined),
+          label: Text(l10n.profileEditCity),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         FilledButton.tonalIcon(
           onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
           icon: const Icon(Icons.logout),
           label: Text(l10n.actionSignOut),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _editCity(BuildContext context, WidgetRef ref) async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final UserProfile? profile = ref.read(authControllerProvider).value;
+    if (profile == null) return;
+
+    final String? city = await showDialog<String>(
+      context: context,
+      builder: (_) => _CityEditDialog(current: profile.locationCity),
+    );
+    if (city == null || !context.mounted) return;
+
+    try {
+      await ref.read(authControllerProvider.notifier).updateCity(city);
+    } on Object {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.errorGeneric)));
+      return;
+    }
+
+    // The board lives on the city the profile was saved with, so a change has
+    // to refresh it or the header and the list would disagree.
+    ref.invalidate(jobBoardProvider);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(l10n.profileCityUpdated)));
+  }
+}
+
+/// The change-service-city dialog: a canonical-city picker over the current
+/// value, with Save enabled only once a different city is chosen.
+class _CityEditDialog extends ConsumerStatefulWidget {
+  const _CityEditDialog({this.current});
+
+  final String? current;
+
+  @override
+  ConsumerState<_CityEditDialog> createState() => _CityEditDialogState();
+}
+
+class _CityEditDialogState extends ConsumerState<_CityEditDialog> {
+  String? _selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.profileEditCity),
+      content: CityPicker(
+        label: l10n.fieldServiceCity,
+        initialValue: widget.current,
+        // setState is what turns a selection into an enabled Save button: the
+        // sheet updates the FormField on its own, but only a rebuild of this
+        // dialog re-evaluates `_selected == null`.
+        onChanged: (String city) => setState(() => _selected = city),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.actionCancel),
+        ),
+        FilledButton(
+          onPressed: _selected == null
+              ? null
+              : () => Navigator.of(context).pop(_selected),
+          child: Text(l10n.actionSave),
         ),
       ],
     );
@@ -297,10 +433,11 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({required this.title, this.body});
+  const _CenteredMessage({required this.title, this.body, this.caption});
 
   final String title;
   final String? body;
+  final String? caption;
 
   @override
   Widget build(BuildContext context) {
@@ -315,6 +452,16 @@ class _CenteredMessage extends StatelessWidget {
             if (body case final String value when value.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.sm),
               Text(value, textAlign: TextAlign.center, style: text.bodyMedium),
+            ],
+            if (caption case final String value when value.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                value,
+                textAlign: TextAlign.center,
+                style: text.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ],
         ),

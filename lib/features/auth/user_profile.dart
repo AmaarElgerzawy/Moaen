@@ -59,6 +59,21 @@ class UserProfile {
 
   final double rating;
 
+  /// A copy with [locationCity] replaced, for the profile editor.
+  ///
+  /// The only field that is ever edited in place, so the copy is narrow; nothing
+  /// else on a profile is user-mutable today.
+  UserProfile copyWith({String? locationCity}) => UserProfile(
+    id: id,
+    fullName: fullName,
+    email: email,
+    phone: phone,
+    avatarUrl: avatarUrl,
+    role: role,
+    locationCity: locationCity ?? this.locationCity,
+    rating: rating,
+  );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

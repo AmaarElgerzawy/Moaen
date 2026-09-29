@@ -18,34 +18,37 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
     final AppLocalizations l10n = AppLocalizations.of(context);
 
+    // The design system names these colours outright (success green, pending
+    // amber), so they are pinned to the palette rather than derived from the
+    // scheme's containers — a status chip shifting hue when the seed changes
+    // would silently break the meaning the labels carry in words.
     final (Color background, Color foreground, IconData icon) =
         switch (status) {
           InspectionStatus.pending => (
-            colors.tertiaryContainer,
-            colors.onTertiaryContainer,
+            AppColors.warningSurface,
+            AppColors.warningOn,
             Icons.hourglass_empty,
           ),
           InspectionStatus.accepted => (
-            colors.secondaryContainer,
-            colors.onSecondaryContainer,
+            AppColors.infoSurface,
+            AppColors.infoOn,
             Icons.person_pin_circle_outlined,
           ),
           InspectionStatus.inProgress => (
-            colors.primaryContainer,
-            colors.onPrimaryContainer,
+            AppColors.successSurface,
+            AppColors.emerald,
             Icons.build_outlined,
           ),
           InspectionStatus.completed => (
-            colors.primary,
-            colors.onPrimary,
+            AppColors.emerald,
+            Colors.white,
             Icons.check_circle_outline,
           ),
           InspectionStatus.cancelled => (
-            colors.surfaceContainerHighest,
-            colors.onSurfaceVariant,
+            AppColors.neutralSurface,
+            AppColors.neutralOn,
             Icons.cancel_outlined,
           ),
         };
@@ -258,7 +261,11 @@ class RequestCard extends StatelessWidget {
                   Text(
                     CostEstimate.format(request.price),
                     style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
+                      // The price is the one number an inspector scans for;
+                      // brand green makes it the visual anchor of the row the
+                      // way the design's "+150 ر.س" badge is.
+                      color: AppColors.emerald,
                     ),
                   ),
                 ],
