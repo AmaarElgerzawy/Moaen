@@ -117,7 +117,7 @@ class _BoardTab extends ConsumerWidget {
               ),
               padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
-                color: AppColors.slate,
+                color: AppColors.darkHeader,
                 borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: Row(

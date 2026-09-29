@@ -1,161 +1,199 @@
 {
   "@@locale": "ar",
 
-  "appName": "Moaen",
+  "appName": "معاين",
+  "@appName": {
+    "description": "اسم المنتج. يبقى بالإنجليزية في كل اللغات لأنه الاسم التجاري المسجل، واسم التطبيق تحت الأيقونة منفصل (values/strings.xml)."
+  },
 
   "signInTitle": "تسجيل الدخول",
   "registerTitle": "إنشاء حساب",
 
   "authSignInSubtitle": "سجّل الدخول للمتابعة.",
-  "authRegisterSubtitle": "أنشئ حسابًا لطلب معاينة أو لتقديمها.",
+  "authRegisterSubtitle": "أنشئ حساباً لطلب فحص أو لتقديمه.",
 
-  "fieldFullName": "الاسم بالكامل",
+  "fieldFullName": "الاسم الكامل",
   "fieldEmail": "البريد الإلكتروني",
   "fieldPassword": "كلمة المرور",
-  "fieldPhoneOptional": "الهاتف (اختياري)",
+  "fieldPhoneOptional": "رقم الجوال (اختياري)",
   "fieldServiceCity": "مدينة الخدمة",
 
-  "helperPhone": "يُستخدم للتواصل معك بشأن المعاينة.",
-  "helperServiceCity": "ستظهر لك طلبات المعاينة من هذه المدينة فقط.",
+  "helperPhone": "يُستخدم للتواصل معك بخصوص الفحص.",
+  "helperServiceCity": "سترى طلبات الفحص من هذه المدينة فقط.",
   "helperPasswordMinLength": "{length} أحرف على الأقل.",
+  "@helperPasswordMinLength": {
+    "placeholders": {
+      "length": { "type": "int" }
+    }
+  },
 
-  "roleClient": "مشترٍ",
-  "roleInspector": "فاحص",
+  "roleClient": "مشتري سيارة",
+  "roleInspector": "معاين",
   "roleAdmin": "مدير",
 
-  "rolePickClient": "أنا مشترٍ",
-  "rolePickInspector": "أنا فاحص",
+  "rolePickClient": "أنا أشتري",
+  "rolePickInspector": "أنا أفحص",
 
-  "actionCreateAccount": "إنشاء حساب",
+  "actionCreateAccount": "إنشاء الحساب",
   "actionSignIn": "تسجيل الدخول",
   "actionSignOut": "تسجيل الخروج",
   "actionShowPassword": "إظهار كلمة المرور",
   "actionHidePassword": "إخفاء كلمة المرور",
-  "actionRetry": "حاول مرة أخرى",
+  "actionRetry": "إعادة المحاولة",
 
   "linkAlreadyRegistered": "لديك حساب بالفعل؟ سجّل الدخول",
-  "linkRegisterPrompt": "جديد على {appName}؟ أنشئ حسابًا",
+  "linkRegisterPrompt": "جديد على {appName}؟ أنشئ حساباً",
+  "@linkRegisterPrompt": {
+    "placeholders": {
+      "appName": { "type": "String" }
+    }
+  },
 
-  "errorGeneric": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+  "errorGeneric": "حدث خطأ ما. حاول مرة أخرى.",
 
   "authErrorInvalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
-  "authErrorEmailNotConfirmed": "يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.",
-  "authErrorAlreadyRegistered": "يوجد حساب مسجّل بهذا البريد الإلكتروني بالفعل.",
-  "authErrorSignupsDisabled": "إنشاء الحسابات الجديدة مغلق حاليًا.",
-  "authErrorProviderDisabled": "تسجيل الدخول غير متاح حاليًا. يرجى المحاولة لاحقًا.",
-  "authErrorRateLimited": "محاولات كثيرة خلال وقت قصير. يرجى الانتظار قليلًا ثم المحاولة.",
-  "authErrorProfileUnavailable": "تم تسجيل الدخول، لكن تعذّر تحميل ملفك الشخصي. يرجى المحاولة مرة أخرى.",
-  "authErrorNoAccount": "لم يتم إتمام العملية. يرجى المحاولة مرة أخرى.",
-  "authErrorConfirmEmail": "تم إنشاء الحساب. راجع بريدك الإلكتروني لتأكيد العنوان، ثم سجّل الدخول.",
-  "authErrorSignOutFailed": "تعذّر تسجيل الخروج. يرجى المحاولة مرة أخرى.",
+  "authErrorEmailNotConfirmed": "أكّد بريدك الإلكتروني قبل تسجيل الدخول.",
+  "authErrorAlreadyRegistered": "يوجد حساب بهذا البريد الإلكتروني بالفعل.",
+  "authErrorSignupsDisabled": "التسجيل مغلق حالياً.",
+  "authErrorProviderDisabled": "تسجيل الدخول غير متاح حالياً. حاول لاحقاً.",
+  "authErrorRateLimited": "محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.",
+  "authErrorProfileUnavailable": "سجّلت الدخول، لكن تعذّر تحميل ملفك الشخصي. حاول مرة أخرى.",
+  "authErrorNoAccount": "لم تنجح المحاولة. حاول مرة أخرى.",
+  "authErrorConfirmEmail": "تم إنشاء الحساب. أكّد البريد من رسالتك ثم سجّل الدخول.",
+  "authErrorSignOutFailed": "تعذّر تسجيل الخروج. حاول مرة أخرى.",
 
   "detailEmail": "البريد الإلكتروني",
-  "detailPhone": "الهاتف",
+  "detailPhone": "رقم الجوال",
   "detailServiceCity": "مدينة الخدمة",
   "detailRating": "التقييم",
   "detailNoRatingsYet": "لا توجد تقييمات بعد",
 
-  "statusPending": "بانتظار فاحص",
+  "statusPending": "بانتظار المعاين",
   "statusAccepted": "تم القبول",
   "statusInProgress": "قيد التنفيذ",
-  "statusCompleted": "مكتملة",
-  "statusCancelled": "ملغاة",
+  "statusCompleted": "مكتمل",
+  "statusCancelled": "ملغي",
 
-  "phase1Title": "اكتملت المرحلة الأولى",
-  "phase1Body": "الهوية والأدوار وتقييد المدينة تعمل بالفعل. طلبات المعاينة ولوحة الوظائف وإدخال التقرير تأتي في المرحلة الثانية.",
+  "phase1Title": "المرحلة 1 مكتملة",
+  "phase1Body": "الهوية والأدوار وتحديد المدينة تعمل الآن. طلبات الفحص وسوق الطلبات وإدخال التقرير تأتي في المرحلة 2.",
 
   "navRequests": "طلباتي",
   "navDashboard": "الرئيسية",
 
-  "dashboardGreeting": "أهلًا، {name}",
+  "dashboardGreeting": "أهلاً، {name}",
+  "@dashboardGreeting": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
   "dashboardActiveTitle": "طلبك النشط",
   "dashboardReportReadyTitle": "تقريرك جاهز",
-  "dashboardCancelledTitle": "طلبك الأخير",
+  "dashboardCancelledTitle": "آخر طلب لك",
   "dashboardNoActiveTitle": "لا يوجد طلب نشط",
-  "dashboardNoActiveBody": "اطلب معاينة قبل أن تسافر لشراء السيارة. فاحص محلي يفحصها ويرسل لك تقريرًا.",
-  "dashboardNewRequest": "طلب معاينة",
+  "dashboardNoActiveBody": "احجز فحصاً قبل السفر لشراء سيارة. معاين محلي يفحصها ويرسل لك تقريراً.",
+  "dashboardNewRequest": "اطلب فحصاً",
   "dashboardViewRequests": "عرض كل الطلبات",
   "dashboardReference": "رقم الطلب",
   "dashboardSteps": "التقدم",
   "dashboardStepRequested": "تم الطلب",
-  "dashboardStepMatched": "تعيين الفاحص",
+  "dashboardStepMatched": "تعيين المعاين",
   "dashboardStepInspecting": "الفحص",
   "dashboardStepReport": "التقرير جاهز",
 
-  "costTitle": "التكلفة التقديرية",
-  "costInspection": "رسوم المعاينة",
-  "costTravel": "انتقال",
+  "costTitle": "تقدير التكلفة",
+  "costInspection": "رسوم الفحص",
+  "costTravel": "التنقل",
   "costTotal": "الإجمالي",
-  "costEstimateNotice": "هذا تقدير. السعر النهائي يُتفق عليه مع الفاحص قبل بدء المعاينة.",
-  "costFree": "مجانًا",
+  "costEstimateNotice": "هذا تقدير. يتم الاتفاق على السعر النهائي مع المعاين قبل بدء الفحص.",
+  "costFree": "مجاناً",
 
-  "createTitle": "طلب معاينة جديد",
-  "createSectionVehicle": "السيارة",
+  "createTitle": "طلب فحص جديد",
+  "createSectionVehicle": "بيانات السيارة",
   "createSectionSeller": "البائع والموقع",
-  "createSectionNotes": "ملاحظات للفاحص",
-  "createNotesHint": "أي شيء يجب أن يعرفه الفاحص: متى يمكن معاينة السيارة، وما يبدو فيها خاطئًا، ومدى موثوقية البائع.",
+  "createSectionNotes": "ملاحظات للمعاين",
+  "createNotesHint": "أي شيء يجب أن يعرفه المعاين: متى يمكن معاينة السيارة، وما يبدو غير طبيعي، ومدى موثوقية البائع.",
   "createNotesOptional": "اختياري",
   "createSubmit": "إرسال الطلب",
-  "createSuccess": "تم إرسال الطلب {reference}. سيتولى فاحص في {city} المهمة.",
+  "createSuccess": "تم إرسال الطلب {reference}. سيتولى معاين في {city} المهمة.",
+  "@createSuccess": {
+    "placeholders": {
+      "reference": { "type": "String" },
+      "city": { "type": "String" }
+    }
+  },
 
-  "fieldCarMake": "الشركة",
+  "fieldCarMake": "الصانع",
   "fieldCarModel": "الموديل",
   "fieldCarYear": "سنة الصنع",
-  "fieldSellerPhone": "هاتف البائع",
+  "fieldSellerPhone": "جوال البائع",
   "fieldSellerAddress": "أين السيارة؟",
   "fieldCity": "المدينة",
-  "fieldInspectionCentre": "مركز المعاينة",
-  "fieldBudget": "ميزانيتك (ج.م)",
-  "fieldBudgetHint": "المبلغ الذي أنت مستعد لدفعه. يؤكده الفاحص قبل البدء.",
-
+  "fieldInspectionCentre": "مركز الفحص",
+  "fieldBudget": "ميزانيتك (ر.س)",
+  "fieldBudgetHint": "المبلغ الذي تستعد لدفعه. يؤكده المعاين قبل البدء.",
   "myRequestsTitle": "طلباتي",
-  "myRequestsEmpty": "لم تطلب أي معاينة بعد.",
-  "myRequestsOpen": "مفتوح",
-  "myRequestsSettled": "منتهٍ",
+  "myRequestsEmpty": "لم تطلب أي فحص بعد.",
+  "myRequestsOpen": "مفتوحة",
+  "myRequestsSettled": "منتهية",
   "actionViewDetails": "عرض التفاصيل",
   "actionCancelRequest": "إلغاء الطلب",
   "actionCancelConfirm": "إلغاء هذا الطلب؟",
-  "actionCancelBody": "سيُبلَّغ الفاحص بأن الطلب لم تعد هناك حاجة إليه. لا يمكن التراجع عن هذا.",
-  "actionKeep": "الاحتفاظ به",
+  "actionCancelBody": "سيتم إبلاغ المعاين بأن الطلب لم يعد مطلوباً. لا يمكن التراجع عن ذلك.",
+  "actionKeep": "أبقِه",
   "requestCancelled": "تم إلغاء الطلب.",
 
-  "navJobBoard": "لوحة الوظائف",
-  "navMyJobs": "وظائفي",
+  "navJobBoard": "سوق الطلبات",
+  "navMyJobs": "مهامي",
   "navProfile": "الملف الشخصي",
 
-  "boardTitle": "متاح في {city}",
+  "boardTitle": "المتاح في {city}",
+  "@boardTitle": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
   "boardEmptyTitle": "لا توجد طلبات بعد",
-  "boardEmptyBody": "ستظهر هنا طلبات المعاينة الجديدة في {city}.",
-  "boardLoadError": "تعذّر تحميل لوحة الوظائف.",
+  "boardEmptyBody": "تظهر طلبات الفحص الجديدة في {city} هنا.",
+  "@boardEmptyBody": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "boardLoadError": "تعذّر تحميل سوق الطلبات.",
 
-  "jobsEmpty": "لم تقبل أي معاينة بعد.",
-  "jobsLoadError": "تعذّر تحميل وظائفك.",
+  "jobsEmpty": "لم تقبل أي فحص بعد.",
+  "jobsLoadError": "تعذّر تحميل مهامك.",
 
-  "actionAccept": "قبول المعاينة",
-  "actionStart": "بدء المعاينة",
-  "actionComplete": "إنهاء المعاينة",
-  "acceptConfirmTitle": "قبول هذه المعاينة؟",
-  "acceptConfirmBody": "القبول يُلزمك بمعاينة هذه السيارة في {city}. سيرى المشتري اسمك على الطلب.",
-  "completeConfirmTitle": "إنهاء هذه المعاينة؟",
-  "completeConfirmBody": "أنهها فقط بعد انتهاء المعاينة. سيرى المشتري الطلب مكتملًا.",
-  "inspectorAccepted": "تم قبول المعاينة.",
-  "inspectorStarted": "بدأت المعاينة.",
-  "inspectorCompleted": "اكتملت المعاينة.",
-  "inspectorAvailableNote": "متاحة في مدينتك.",
-  "inspectorAssignedNote": "هذه المعاينة مكلّف بها أنت.",
-  "inspectorSettledNote": "هذه المعاينة منتهية.",
-  "profileCityNotSet": "لم تُحدد مدينة خدمة.",
+  "actionAccept": "قبول الفحص",
+  "actionStart": "بدء الفحص",
+  "actionComplete": "إكمال الفحص",
+  "acceptConfirmTitle": "قبول هذا الفحص؟",
+  "acceptConfirmBody": "القبول يلتزمك بفحص هذه السيارة في {city}. سيظهر اسمك على الطلب أمام المشتري.",
+  "@acceptConfirmBody": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "completeConfirmTitle": "إكمال هذا الفحص؟",
+  "completeConfirmBody": "أكمله فقط بعد انتهاء الفحص. سيظهر الطلب للمشتري كمنتهٍ.",
+  "inspectorAccepted": "تم قبول الفحص.",
+  "inspectorStarted": "تم بدء الفحص.",
+  "inspectorCompleted": "تم إكمال الفحص.",
+  "inspectorAvailableNote": "متاح في مدينتك.",
+  "inspectorAssignedNote": "هذا الفحص مُسند إليك.",
+  "inspectorSettledNote": "هذا الفحص منتهٍ.",
+  "profileCityNotSet": "لم تُحدَّد مدينة الخدمة.",
 
-  "heroTitle": "فحص سيارة جديدة",
-  "heroBody": "يفحص معاين معتمد السيارة في مكانها ويرسل لك تقريرًا شاملاً.",
+  "heroTitle": "احجز فحصاً جديداً",
+  "heroBody": "معاين معتمد يفحص السيارة في مكانها ويرسل لك تقريراً كاملاً.",
   "heroAction": "اطلب الآن",
 
-  "createCityHelper": "يظهر الطلب لمعاينين في هذه المدينة فقط.",
+  "createCityHelper": "تظهر الطلبات للمعاينين في هذه المدينة فقط.",
 
   "cityPickerTitle": "اختر المدينة",
   "cityPickerSearchHint": "ابحث عن مدينة",
   "cityPickerEmpty": "لا توجد مدن مطابقة",
-  "cityPickerLoadError": "تعذر تحميل قائمة المدن.",
+  "cityPickerLoadError": "تعذّر تحميل قائمة المدن.",
 
   "profileEditCity": "تغيير مدينة الخدمة",
   "profileCityUpdated": "تم تحديث مدينة الخدمة.",
@@ -164,10 +202,208 @@
   "actionSave": "حفظ",
 
   "boardLive": "مباشر",
-  "boardEmptyHint": "إذا كانت المدينة غير صحيحة، غيّر مدينة خدمتك من صفحة ملفك.",
+  "boardEmptyHint": "المدينة غير صحيحة؟ غيّر مدينة الخدمة من ملفك الشخصي.",
 
   "errorRequired": "هذا الحقل مطلوب",
   "errorInvalidYear": "أدخل سنة بين 1950 و2100",
-  "errorInvalidPhone": "أدخل رقم هاتف صحيح",
-  "errorInvalidBudget": "أدخل مبلغًا، مثل 500"
+  "errorInvalidPhone": "أدخل رقم جوال صحيحاً",
+  "errorInvalidBudget": "أدخل مبلغاً، مثال 500",
+
+  "navHome": "الرئيسية",
+  "navMyRequestsTab": "طلباتي",
+  "navReports": "التقارير",
+  "navAccount": "الحساب",
+  "navTasks": "المهام",
+  "navInspections": "الفحوصات",
+  "navWallet": "المحفظة",
+  "navProfileTab": "الملف",
+
+  "buyerGreeting": "مرحباً بك 👋",
+  "buyerNewInspectionTitle": "فحص سيارة جديدة",
+  "buyerNewInspectionBody": "اختر المدينة وسيحدد المعاين المركز الأنسب",
+  "buyerNewInspectionAction": "اطلب +\nالآن",
+  "buyerActiveSection": "متابعة الطلب النشط",
+  "buyerActiveRequestLabel": "طلب {reference}",
+  "@buyerActiveRequestLabel": {
+    "placeholders": {
+      "reference": { "type": "String" }
+    }
+  },
+  "buyerOrderCity": "المدينة: {city}",
+  "@buyerOrderCity": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "buyerPillBooked": "📍 تم تحديد الموعد والمركز",
+
+  "stepAcceptedTitle": "تم قبول الطلب",
+  "stepAcceptedSub": "المعاين المعتمد: {name}",
+  "@stepAcceptedSub": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "stepCoordinationTitle": "التنسيق واختيار المركز المعتمد",
+  "stepCoordinationSub": "قام المعاين باختيار مركز الفحص المجهز بـ{city}",
+  "@stepCoordinationSub": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "stepAppointmentTitle": "موعد الفحص والمركز المحدد",
+  "stepAppointmentSub": "{day} {time} - {centre}",
+  "@stepAppointmentSub": {
+    "placeholders": {
+      "day": { "type": "String" },
+      "time": { "type": "String" },
+      "centre": { "type": "String" }
+    }
+  },
+  "stepInspectionTitle": "الفحص الشامل بالمركز",
+  "stepInspectionSub": "رفع التقرير الشامل فور اكتمال الكشف",
+
+  "buyerNoticeTitle": "🔔 إشعار الموعد والمركز المحدد:",
+  "buyerNoticeWillInspect": "سيتم فحص السيارة في",
+  "buyerNoticeDay": "يوم",
+  "buyerNoticeWhen": "{day} الساعة {time}",
+  "@buyerNoticeWhen": {
+    "placeholders": {
+      "day": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+  "buyerNoticeSent": "سنرسل لك إشعاراً فور صدور التقرير .",
+
+  "invoiceTitle": "تفاصيل الفاتورة والتكلفة",
+  "invoiceTransparency": "🔒 شفافية كاملة",
+  "invoiceCentreFee": "رسوم فحص المركز المعتمد",
+  "invoiceCentreFeeNamed": "فحص المركز المعتمد ({centre})",
+  "@invoiceCentreFeeNamed": {
+    "placeholders": {
+      "centre": { "type": "String" }
+    }
+  },
+  "invoiceCentrePending": "⏳ يُحدد بعد اختيار المركز بواسطة المعاين",
+  "invoiceInspectorFee": "أتعاب المعاين (التنسيق والجدولة)",
+  "invoicePlatformFee": "رسوم منصة معاين (التوثيق)",
+  "invoiceEstimateTotalLabel": "الإجمالي التقديري الحالي:",
+  "invoiceEstimateTotalValue": "{total} + رسوم المركز",
+  "@invoiceEstimateTotalValue": {
+    "placeholders": {
+      "total": { "type": "String" }
+    }
+  },
+  "invoiceInspectorFeeInvoice": "أتعاب المعاين (التنسيق والمتابعة)",
+  "invoicePlatformFeeInvoice": "رسوم منصة معاين (التوثيق والتتبع)",
+  "invoiceTotalLabel": "الإجمالي الشامل:",
+  "invoiceApprove": "الموافقة على العرض وتأكيد الطلب",
+
+  "createHeaderTitle": "طلب فحص جديد",
+  "createHeaderSubtitle": "المرحلة 1: تقديم البيانات وتلقي عروض المعاينين",
+  "createCardVehicle": "🚘 بيانات السيارة المطلوب فحصها",
+  "createFieldCarModel": "نوع وموديل السيارة:",
+  "createHintCarModel": "مثال: تويوتا أف جى 2023",
+  "createFieldCity": "المدينة المتواجد بها:",
+  "createFieldPlate": "رقم اللوحة (اختياري):",
+  "createHintPlate": "3366 ج ن س",
+  "createFieldListing": "رابط إعلان السيارة (اختياري):",
+  "createHintListing": "https://haraj.com.sa/...",
+  "createCardSeller": "👤 بيانات البائع للتنسيق الفوري",
+  "createFieldSellerName": "اسم البائع / مالك السيارة:",
+  "createHintSellerName": "مثال: أبو فهد",
+  "createFieldSellerPhone": "رقم جوال البائع:",
+  "createHintSellerPhone": "05xxxxxxxx",
+  "createCardNotes": "📝 ملاحظات إضافية للمعاين (اختياري)",
+  "createFieldNotes": "ملاحظات أو أجزاء ترغب بالتركيز عليها:",
+  "createHintNotes": "مثال: يرجى التأكد من رش الصدام الأمامي أو فحص التكييف...",
+  "createCostCardTitle": "🔒 هيكلة التكلفة والشفافية (بدون دفع مقدماً)",
+
+  "marketTitle": "سوق الطلبات المتاحة",
+  "marketSubtitle": "اختر الطلب لبدء مهلة التنسيق (48 ساعة)",
+  "marketListTitle": "الطلبات المعروضة حالياً",
+  "marketLive": "🔴 تحديث مباشر",
+  "marketFeeLabel": "أتعاب المعاين",
+  "marketBuyer": "طالب الفحص: {name}",
+  "@marketBuyer": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "marketPosted": "تم النشر: {ago}",
+  "@marketPosted": {
+    "placeholders": {
+      "ago": { "type": "String" }
+    }
+  },
+  "marketAccept": "🤝 قبول الطلب وبدء التنسيق (48 ساعة)",
+
+  "inspectorBadgeVerified": "معاين معتمد (نفاذ ✅)",
+  "inspectorAvailable": "متاح للعمل",
+  "statRequestFee": "أتعاب الطلب",
+  "statInspections": "الفحوصات",
+  "statEarningsToday": "أرباح اليوم",
+  "statInspectionsValue": "{count, plural, =2 {فحص} other {فحص}}",
+  "@statInspectionsValue": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "inspectorTaskTitle": "المهمة القائمة (تحديد المركز والموعد) مهلة التنسيق: 48 ساعة ⏳",
+  "inspectorTaskCity": "المدينة المطلوب فحصها: {city}",
+  "@inspectorTaskCity": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "contactSellerLabel": "البائع (مالك السيارة):",
+  "contactRequesterLabel": "الشاري (طالب الفحص):",
+  "contactPhone": "📞 اتصال",
+  "contactWhatsapp": "واتساب",
+  "contactAwaitingBooking": "✅ في انتظار حجزك",
+  "centreBoxTitle": "🏬 اختيار مركز الفحص المعتمد وتحديد الموعد",
+  "centreSelectLabel": "اختر مركز الفحص بـ{city}:",
+  "@centreSelectLabel": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "centreDayTimeLabel": "اليوم والوقت المتفق عليه مع البائع:",
+  "centreDayPrefix": "اليوم:",
+  "centreConfirm": "تأكيد الحجز وإرسال تفاصيل الموعد والمركز",
+  "centreConfirmNotify": "🔔 للشاري",
+  "inspectorNewBoardTitle": "الطلبات الجديدة المعروضة بمدينتك",
+  "inspectorMiniNeighbourhood": "الحي: {area} 📍",
+  "@inspectorMiniNeighbourhood": {
+    "placeholders": {
+      "area": { "type": "String" }
+    }
+  },
+  "inspectorMiniFee": "أتعاب المعاين: +{amount}",
+  "@inspectorMiniFee": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+  "inspectorAcceptMini": "قبول الطلب",
+
+  "timeMinutesAgo": "منذ {count, plural, =1 {دقيقة} =2 {دقيقتان} few {دقائق} other {دقيقة}}",
+  "@timeMinutesAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "timeHoursAgo": "منذ {count, plural, =1 {ساعة} =2 {ساعتان} few {ساعات} other {ساعة}}",
+  "@timeHoursAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "timeDaysAgo": "منذ {count, plural, =1 {يوم} =2 {يومان} few {أيام} other {يوم}}",
+  "@timeDaysAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "timeJustNow": "منذ لحظات"
 }

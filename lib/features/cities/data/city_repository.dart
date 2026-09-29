@@ -6,7 +6,7 @@ import '../../../core/logging/app_logger.dart';
 ///
 /// The board matches `car_inspections.city` against the inspector's
 /// `users.location_city` by `lower(btrim(...))` equality. Free text made that
-/// comparison a lottery — "Cairo" and "القاهرة" are different strings — so both
+/// comparison a lottery — "Dammam" and "القاهرة" are different strings — so both
 /// the buyer's form and the inspector's profile pick from this list instead of
 /// typing. The value stored is [nameAr], the Arabic name, which is what the Real
 /// World uses in Egypt; [nameEn] exists so the list is still searchable (and

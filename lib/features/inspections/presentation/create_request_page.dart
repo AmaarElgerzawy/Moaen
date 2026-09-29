@@ -73,7 +73,7 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
   /// Read from the selected city so the breakdown tracks the buyer's choice,
   /// which is what makes the number feel like a quote rather than a static
   /// caption.
-  CostEstimate get _estimate => CostEstimate.forCity((_city ?? '').trim());
+  CostEstimate get _estimate => CostEstimate.standard;
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -312,18 +312,35 @@ class _EstimatePreview extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          // The design's two fixed lines. The centre's fee is not one of them: no
+          // centre has been chosen when a request is created, and showing a zero
+          // there would read as "the centre inspection is free" rather than "not
+          // known yet".
           _Line(
-            label: l10n.costInspection,
-            value: CostEstimate.format(usingBudget ? budget! : estimate.inspectionFee),
+            label: l10n.invoiceInspectorFee,
+            value: CostEstimate.format(estimate.inspectorFee),
           ),
           _Line(
-            label: l10n.costTravel,
-            value: l10n.costFree,
+            label: l10n.invoicePlatformFee,
+            value: CostEstimate.format(estimate.platformFee),
+          ),
+          _Line(
+            label: l10n.invoiceCentreFee,
+            value: l10n.invoiceCentrePending,
+            // The pending marker is the design's own orange warning treatment, and
+            // it is the only part of this box that is a warning — hence a smaller
+            // type size than the two settled figures.
+            dimmed: true,
           ),
           const Divider(height: AppSpacing.lg),
           _Line(
             label: l10n.costTotal,
-            value: CostEstimate.format(usingBudget ? budget! : estimate.total),
+            // A buyer's own budget replaces the platform's floor figure rather than
+            // being added to it. It is a ceiling they set, not a fourth line on the
+            // invoice, and summing the two would produce a number nobody quoted.
+            value: CostEstimate.format(
+              usingBudget ? budget! : estimate.total,
+            ),
             emphasise: true,
           ),
           const SizedBox(height: AppSpacing.xs),
@@ -340,11 +357,20 @@ class _EstimatePreview extends StatelessWidget {
 }
 
 class _Line extends StatelessWidget {
-  const _Line({required this.label, required this.value, this.emphasise = false});
+  const _Line({
+    required this.label,
+    required this.value,
+    this.emphasise = false,
+    this.dimmed = false,
+  });
 
   final String label;
   final String value;
   final bool emphasise;
+
+  /// True for a figure that is not settled yet, which the design shows smaller
+  /// and warmer than the two that are.
+  final bool dimmed;
 
   @override
   Widget build(BuildContext context) {
@@ -352,14 +378,32 @@ class _Line extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(label, style: emphasise ? text.titleSmall : text.bodySmall),
-          const Spacer(),
-          Text(
-            value,
-            style: emphasise
-                ? text.titleSmall?.copyWith(fontWeight: FontWeight.w800)
-                : text.bodySmall,
+          // Flexible because the design's labels are sentences, and a `Row` gives
+          // an unconstrained child the whole line — which overflows rather than
+          // wraps. Both sides flex, and the value gets the larger share because it
+          // is usually the shorter of the two; the pending marker is the case that
+          // needs the room, and it wraps rather than clipping.
+          Expanded(
+            flex: 2,
+            child: Text(label, style: emphasise ? text.titleSmall : text.bodySmall),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Flexible(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: emphasise
+                  ? text.titleSmall?.copyWith(fontWeight: FontWeight.w800)
+                  : dimmed
+                  ? text.bodySmall?.copyWith(
+                      color: AppColors.warning,
+                      fontSize: 11,
+                    )
+                  : text.bodySmall,
+            ),
           ),
         ],
       ),

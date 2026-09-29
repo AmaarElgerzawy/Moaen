@@ -27,7 +27,7 @@ const UserProfile _signedInInspector = UserProfile(
   fullName: 'كريم عادل',
   email: 'karim@example.com',
   role: UserRole.inspector,
-  locationCity: 'Cairo',
+  locationCity: 'Dammam',
   rating: 0,
 );
 
@@ -44,7 +44,7 @@ final RegExp _arabicScript = RegExp(r'[\u0600-\u06FF]');
 /// the detail have real content to lay out.
 FakeInspectionRepository _withOneBoardRequest() => FakeInspectionRepository(
   requests: <InspectionRequest>[
-    buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Cairo'),
+    buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Dammam'),
   ],
 );
 
@@ -168,13 +168,13 @@ void main() {
       await _pump(tester, _arabic(_withOneBoardRequest(), const InspectorHomePage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      expect(find.text(l10n.boardTitle('Cairo')), findsOneWidget);
+      expect(find.text(l10n.boardTitle('Dammam')), findsOneWidget);
       expect(
-        _arabicScript.hasMatch(l10n.boardTitle('Cairo')),
+        _arabicScript.hasMatch(l10n.boardTitle('Dammam')),
         isTrue,
         reason: 'the Arabic bundle must not be serving English',
       );
-      expect(find.text('Available in Cairo'), findsNothing);
+      expect(find.text('Available in Dammam'), findsNothing);
     });
 
     testWidgets('the navigation destinations are localized', (

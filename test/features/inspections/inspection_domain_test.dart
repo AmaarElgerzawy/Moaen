@@ -62,7 +62,7 @@ void main() {
       'car_year': year,
       'seller_phone': '+201000000001',
       'seller_location_address': '12 Nile Street',
-      'city': 'Cairo',
+      'city': 'Dammam',
       'inspection_center_name': null,
       'status': status,
       'price': price,
@@ -81,7 +81,7 @@ void main() {
       expect(r.carMake, 'Toyota');
       expect(r.carModel, 'Corolla');
       expect(r.carYear, 2019);
-      expect(r.city, 'Cairo');
+      expect(r.city, 'Dammam');
       expect(r.status, InspectionStatus.pending);
       expect(r.price, 500.0);
       expect(r.clientNotes, isNull);
@@ -200,7 +200,7 @@ void main() {
       // they parse to something sendable.
       expect(const InspectionDraft(budget: '').budgetAmount, isNull);
       expect(const InspectionDraft(budget: 'abc').budgetAmount, isNull);
-      expect(const InspectionDraft(budget: '500 EGP').budgetAmount, isNull);
+      expect(const InspectionDraft(budget: '500 ر.س').budgetAmount, isNull);
     });
 
     test('rejects a trailing bare decimal point', () {
@@ -226,7 +226,7 @@ void main() {
       carYear: ' 2019 ',
       sellerPhone: ' +201000000001 ',
       sellerLocationAddress: ' 12 Nile Street ',
-      city: ' Cairo ',
+      city: ' Dammam ',
       clientNotes: '  Seller is impatient.  ',
       budget: ' 500 ',
     );
@@ -284,7 +284,7 @@ void main() {
       expect(row['car_year'], 2019);
       expect(row['seller_phone'], '+201000000001');
       expect(row['seller_location_address'], '12 Nile Street');
-      expect(row['city'], 'Cairo');
+      expect(row['city'], 'Dammam');
       expect(row['price'], 500.0);
       expect(row['client_notes'], 'Seller is impatient.');
     });
@@ -296,7 +296,7 @@ void main() {
         carYear: '2019',
         sellerPhone: '+201000000001',
         sellerLocationAddress: '12 Nile Street',
-        city: 'Cairo',
+        city: 'Dammam',
         clientNotes: '   ',
         budget: '500',
       );
@@ -309,21 +309,52 @@ void main() {
 
   group('CostEstimate', () {
     test('the total is the sum of its parts', () {
-      const CostEstimate e = CostEstimate(inspectionFee: 500, travelFee: 120);
-      expect(e.total, 620.0);
+      const CostEstimate e = CostEstimate(
+        centerFee: 320,
+        inspectorFee: 150,
+        platformFee: 49,
+      );
+      expect(e.total, 519.0);
+    });
+
+    test('a pending centre fee is excluded rather than counted as zero', () {
+      // The design shows `199 ر.س + رسوم المركز` while no centre has been chosen.
+      // Counting the unknown centre fee as zero would make the total look final.
+      const CostEstimate e = CostEstimate();
+      expect(e.isCenterFeePending, isTrue);
+      expect(e.total, 199.0);
+    });
+
+    test('naming a centre fills the total in', () {
+      final CostEstimate e = CostEstimate.withCenterFee(300);
+      expect(e.isCenterFeePending, isFalse);
+      expect(e.total, 499.0);
     });
 
     test('formats a whole amount without a trailing .00', () {
       // 500.00 implies a precision the figure does not have.
-      expect(CostEstimate.format(500), '500 EGP');
+      expect(CostEstimate.format(500), '500 ر.س');
     });
 
     test('keeps a genuine fractional amount', () {
-      expect(CostEstimate.format(495.5), '495.50 EGP');
+      expect(CostEstimate.format(495.5), '495.50 ر.س');
     });
 
     test('formats zero', () {
-      expect(CostEstimate.format(0), '0 EGP');
+      expect(CostEstimate.format(0), '0 ر.س');
+    });
+
+    test('formats the currency before the figure, as the stats bar does', () {
+      // Two forms, because the design uses both: the cost boxes and invoices put
+      // the currency after the amount, the stats bar and the fee pills put it
+      // before. One formatter would force one of them to be wrong.
+      expect(CostEstimate.formatPrefixed(300), 'ر.س 300');
+    });
+
+    test('groups thousands so a five-figure budget reads as one number', () {
+      // The odometer reading on the report needs the same treatment.
+      expect(CostEstimate.format(1500), '1,500 ر.س');
+      expect(CostEstimate.amount(516778), '516,778');
     });
   });
 }

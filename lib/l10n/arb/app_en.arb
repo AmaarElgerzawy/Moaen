@@ -129,7 +129,7 @@
   "fieldSellerAddress": "Where is the car?",
   "fieldCity": "City",
   "fieldInspectionCentre": "Inspection centre",
-  "fieldBudget": "Your budget (EGP)",
+  "fieldBudget": "Your budget (SAR)",
   "fieldBudgetHint": "The amount you are willing to pay. The inspector confirms before starting.",
 
   "myRequestsTitle": "My requests",
@@ -208,5 +208,203 @@
   "errorRequired": "This field is required",
   "errorInvalidYear": "Enter a year between 1950 and 2100",
   "errorInvalidPhone": "Enter a valid phone number",
-  "errorInvalidBudget": "Enter an amount, for example 500"
+  "errorInvalidBudget": "Enter an amount, for example 500",
+
+  "navHome": "Home",
+  "navMyRequestsTab": "My requests",
+  "navReports": "Reports",
+  "navAccount": "Account",
+  "navTasks": "Tasks",
+  "navInspections": "Inspections",
+  "navWallet": "Wallet",
+  "navProfileTab": "Profile",
+
+  "buyerGreeting": "Welcome 👋",
+  "buyerNewInspectionTitle": "New car inspection",
+  "buyerNewInspectionBody": "Pick the city and the inspector will choose the nearest centre",
+  "buyerNewInspectionAction": "Request\nnow",
+  "buyerActiveSection": "Active request",
+  "buyerActiveRequestLabel": "Request {reference}",
+  "@buyerActiveRequestLabel": {
+    "placeholders": {
+      "reference": { "type": "String" }
+    }
+  },
+  "buyerOrderCity": "City: {city}",
+  "@buyerOrderCity": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "buyerPillBooked": "📍 Appointment and centre set",
+
+  "stepAcceptedTitle": "Request accepted",
+  "stepAcceptedSub": "Approved inspector: {name}",
+  "@stepAcceptedSub": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "stepCoordinationTitle": "Coordination and centre selection",
+  "stepCoordinationSub": "The inspector chose the equipped inspection centre in {city}",
+  "@stepCoordinationSub": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "stepAppointmentTitle": "Inspection appointment and centre set",
+  "stepAppointmentSub": "{day} {time} - {centre}",
+  "@stepAppointmentSub": {
+    "placeholders": {
+      "day": { "type": "String" },
+      "time": { "type": "String" },
+      "centre": { "type": "String" }
+    }
+  },
+  "stepInspectionTitle": "Full inspection at the centre",
+  "stepInspectionSub": "The full report is uploaded as soon as the check is done",
+
+  "buyerNoticeTitle": "🔔 Appointment and centre notification:",
+  "buyerNoticeWillInspect": "The car will be inspected at",
+  "buyerNoticeDay": "on",
+  "buyerNoticeWhen": "{day} at {time}",
+  "@buyerNoticeWhen": {
+    "placeholders": {
+      "day": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+  "buyerNoticeSent": "We will notify you as soon as the report is issued.",
+
+  "invoiceTitle": "Invoice and cost details",
+  "invoiceTransparency": "🔒 Full transparency",
+  "invoiceCentreFee": "Approved centre inspection fee",
+  "invoiceCentreFeeNamed": "Approved centre inspection ({centre})",
+  "@invoiceCentreFeeNamed": {
+    "placeholders": {
+      "centre": { "type": "String" }
+    }
+  },
+  "invoiceCentrePending": "⏳ Set after the inspector chooses the centre",
+  "invoiceInspectorFee": "Inspector fee (coordination and scheduling)",
+  "invoicePlatformFee": "Moaen platform fee (documentation)",
+  "invoiceEstimateTotalLabel": "Current estimated total:",
+  "invoiceEstimateTotalValue": "{total} + centre fee",
+  "@invoiceEstimateTotalValue": {
+    "placeholders": {
+      "total": { "type": "String" }
+    }
+  },
+  "invoiceInspectorFeeInvoice": "Inspector fee (coordination and follow-up)",
+  "invoicePlatformFeeInvoice": "Moaen platform fee (documentation and tracking)",
+  "invoiceTotalLabel": "Total inclusive:",
+  "invoiceApprove": "Approve the offer and confirm the request",
+
+  "createHeaderTitle": "New inspection request",
+  "createHeaderSubtitle": "Stage 1: submit the details and receive inspectors' offers",
+  "createCardVehicle": "🚘 Vehicle details",
+  "createFieldCarModel": "Make and model:",
+  "createHintCarModel": "e.g. Toyota FJ 2023",
+  "createFieldCity": "The city it is in:",
+  "createFieldPlate": "Plate number (optional):",
+  "createHintPlate": "3366 ABC",
+  "createFieldListing": "Car listing link (optional):",
+  "createHintListing": "https://haraj.com.sa/...",
+  "createCardSeller": "👤 Seller details for immediate coordination",
+  "createFieldSellerName": "Seller / owner name:",
+  "createHintSellerName": "e.g. Abu Fahad",
+  "createFieldSellerPhone": "Seller mobile number:",
+  "createHintSellerPhone": "05xxxxxxxx",
+  "createCardNotes": "📝 Additional notes for the inspector (optional)",
+  "createFieldNotes": "Notes or parts you want focused on:",
+  "createHintNotes": "e.g. please check the front bumper repaint or the air conditioning...",
+  "createCostCardTitle": "🔒 Cost structure and transparency (no upfront payment)",
+
+  "marketTitle": "Available requests market",
+  "marketSubtitle": "Pick a request to start the 48-hour coordination window",
+  "marketListTitle": "Currently listed requests",
+  "marketLive": "🔴 Live update",
+  "marketFeeLabel": "Inspector fee",
+  "marketBuyer": "Requested by {name}",
+  "@marketBuyer": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "marketPosted": "Posted: {ago} ago",
+  "@marketPosted": {
+    "placeholders": {
+      "ago": { "type": "String" }
+    }
+  },
+  "marketAccept": "🤝 Accept request and start coordination (48 hours)",
+
+  "inspectorBadgeVerified": "Approved inspector (Nafath ✅)",
+  "inspectorAvailable": "Available for work",
+  "statRequestFee": "Request fee",
+  "statInspections": "Inspections",
+  "statEarningsToday": "Today's earnings",
+  "statInspectionsValue": "{count, plural, =1 {1 inspection} other {{count} inspections}}",
+  "@statInspectionsValue": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "inspectorTaskTitle": "Current task (centre and appointment) coordination window: 48 hours ⏳",
+  "inspectorTaskCity": "City to inspect in: {city}",
+  "@inspectorTaskCity": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "contactSellerLabel": "Seller (car owner):",
+  "contactRequesterLabel": "Buyer (requested the inspection):",
+  "contactPhone": "📞 Call",
+  "contactWhatsapp": "WhatsApp",
+  "contactAwaitingBooking": "✅ Awaiting your booking",
+  "centreBoxTitle": "🏬 Choose the approved centre and set the appointment",
+  "centreSelectLabel": "Choose the inspection centre in {city}:",
+  "@centreSelectLabel": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+  "centreDayTimeLabel": "Day and time agreed with the seller:",
+  "centreDayPrefix": "Day:",
+  "centreConfirm": "Confirm the booking and send the appointment and centre details",
+  "centreConfirmNotify": "🔔 to the buyer",
+  "inspectorNewBoardTitle": "New requests listed in your city",
+  "inspectorMiniNeighbourhood": "District: {area} 📍",
+  "@inspectorMiniNeighbourhood": {
+    "placeholders": {
+      "area": { "type": "String" }
+    }
+  },
+  "inspectorMiniFee": "Inspector fee: +{amount}",
+  "@inspectorMiniFee": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+  "inspectorAcceptMini": "Accept request",
+
+  "timeMinutesAgo": "{count, plural, =1 {1 minute} other {{count} minutes}}",
+  "@timeMinutesAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "timeHoursAgo": "{count, plural, =1 {1 hour} other {{count} hours}}",
+  "@timeHoursAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "timeDaysAgo": "{count, plural, =1 {1 day} other {{count} days}}",
+  "@timeDaysAgo": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "timeJustNow": "moments"
 }

@@ -171,9 +171,15 @@ void main() {
       await _pump(tester,   _app(repo, child: const ClientDashboardPage()));
 
       expect(find.text('Cost estimate'), findsOneWidget);
-      expect(find.text('Inspection fee'), findsOneWidget);
+      expect(find.text('Inspector fee (coordination and scheduling)'), findsOneWidget);
+      expect(find.text('Moaen platform fee (documentation)'), findsOneWidget);
       expect(find.text('Total'), findsOneWidget);
-      expect(find.text('500 EGP'), findsNWidgets(2));
+      // The platform's two fixed lines, and their sum. 150 and 49 are the
+      // inspector's and the platform's own fees; the buyer's stated budget is a
+      // ceiling and is deliberately not on this list.
+      expect(find.text('150 ر.س'), findsOneWidget);
+      expect(find.text('49 ر.س'), findsOneWidget);
+      expect(find.text('199 ر.س'), findsOneWidget);
 
       // The distinction matters: a total shown without this reads as a charge
       // that has already happened, when it is a budget the buyer stated.
@@ -306,7 +312,7 @@ void main() {
       await _pump(tester, _app(repo, child: const CreateRequestPage()));
 
       await _fillValidForm(tester);
-      await _selectCity(tester, 'Giza');
+      await _selectCity(tester, 'Jeddah');
       await tester.enterText(
         find.widgetWithText(TextFormField, _budget),
         '750',
@@ -321,7 +327,7 @@ void main() {
       expect(sent.carYear, '2019');
       expect(sent.sellerPhone, '+201000000001');
       expect(sent.sellerLocationAddress, '12 Nile Street');
-      expect(sent.city, 'Giza');
+      expect(sent.city, 'Jeddah');
       expect(sent.clientNotes, 'Call before going');
       expect(sent.budgetAmount, 750.0);
     });
@@ -331,8 +337,11 @@ void main() {
     ) async {
       await _pump(tester,   _app(FakeInspectionRepository(), child: const CreateRequestPage()));
 
-      // Before anything is typed, the platform's estimate stands in.
-      expect(find.text('500 EGP'), findsNWidgets(2));
+      // Before anything is typed, the platform's own floor stands in: the two
+      // fixed lines, and their sum.
+      expect(find.text('150 ر.س'), findsOneWidget);
+      expect(find.text('49 ر.س'), findsOneWidget);
+      expect(find.text('199 ر.س'), findsOneWidget);
 
       await tester.enterText(
         find.widgetWithText(TextFormField, _budget),
@@ -340,9 +349,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The buyer's own budget takes over as soon as they state one.
-      expect(find.text('750 EGP'), findsNWidgets(2));
-      expect(find.text('500 EGP'), findsNothing);
+      // The buyer's own budget takes over as the total as soon as they state one,
+      // replacing the floor rather than being added to it.
+      expect(find.text('750 ر.س'), findsOneWidget);
+      expect(find.text('199 ر.س'), findsNothing);
     });
 
     testWidgets('notes are optional', (
@@ -570,7 +580,7 @@ Future<void> _fillValidForm(
   await enter(_year, '2019');
   await enter(_phone, '+201000000001');
   await enter(_address, '12 Nile Street');
-  await _selectCity(tester, 'Cairo');
+  await _selectCity(tester, 'Dammam');
   await enter(_budget, '500');
   if (withNotes) await enter(_notes, 'Call before going');
   await tester.pumpAndSettle();
@@ -602,7 +612,7 @@ const String _model = 'Model';
 const String _year = 'Year';
 const String _phone = 'Seller phone';
 const String _address = 'Where is the car?';
-const String _budget = 'Your budget (EGP)';
+const String _budget = 'Your budget (SAR)';
 
 /// The notes field is labelled by its instruction, which doubles as its hint.
 /// There is no short label to find it by.

@@ -27,28 +27,28 @@ class StatusChip extends StatelessWidget {
     final (Color background, Color foreground, IconData icon) =
         switch (status) {
           InspectionStatus.pending => (
-            AppColors.warningSurface,
-            AppColors.warningOn,
+            AppColors.alertSurface,
+            AppColors.alertOn,
             Icons.hourglass_empty,
           ),
           InspectionStatus.accepted => (
-            AppColors.infoSurface,
-            AppColors.infoOn,
+            AppColors.inputFill,
+            AppColors.textSecondary,
             Icons.person_pin_circle_outlined,
           ),
           InspectionStatus.inProgress => (
             AppColors.successSurface,
-            AppColors.emerald,
+            AppColors.green,
             Icons.build_outlined,
           ),
           InspectionStatus.completed => (
-            AppColors.emerald,
+            AppColors.green,
             Colors.white,
             Icons.check_circle_outline,
           ),
           InspectionStatus.cancelled => (
-            AppColors.neutralSurface,
-            AppColors.neutralOn,
+            AppColors.inputFill,
+            AppColors.textSecondary,
             Icons.cancel_outlined,
           ),
         };
@@ -265,7 +265,7 @@ class RequestCard extends StatelessWidget {
                       // The price is the one number an inspector scans for;
                       // brand green makes it the visual anchor of the row the
                       // way the design's "+150 ر.س" badge is.
-                      color: AppColors.emerald,
+                      color: AppColors.green,
                     ),
                   ),
                 ],

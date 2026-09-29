@@ -67,8 +67,8 @@ void main() {
       expect(
         Localizations.localeOf(probe.context).languageCode,
         'ar',
-        reason: 'The fallback must be the product language. An Egyptian buyer '
-            'with an unrecognised system locale should not silently get English.',
+        reason: 'The fallback must be the product language. A buyer with an '
+            'unrecognised system locale should not silently get English.',
       );
     });
 
@@ -78,7 +78,10 @@ void main() {
         locale: const Locale('ar'),
       )).l10n;
 
-      expect(l10n.roleInspector, 'فاحص');
+      // "معاين" is the product's own name, and it is the name the design uses on
+      // every screen. Asserting it here rather than a synonym is what stops the
+      // brand drifting away from the name in the app icon.
+      expect(l10n.roleInspector, 'معاين');
       expect(l10n.actionSignIn, 'تسجيل الدخول');
       // Placeholders must interpolate rather than print the ICU syntax, which is
       // what a missing argument silently produces.
@@ -148,8 +151,25 @@ void main() {
             'asserted: ${enKeys.difference(arKeys)}',
       );
 
-      // The brand is intentionally the same in both scripts.
-      const Set<String> intentionallySame = <String>{'appName'};
+      // Keys whose Arabic value is deliberately *not* different from English.
+      //
+      // Each is here for a stated reason, not because translating it was skipped.
+      // An allowlist is only worth having if it is auditable, so every entry names
+      // why the two scripts coincide — a value that is Latin by nature cannot be
+      // translated, and translating it would corrupt it.
+      const Set<String> intentionallySame = <String>{
+        // The registered brand, Latin in both scripts by design.
+        'appName',
+        // A pure placeholder template. Arabic and English read the same because
+        // the only content is `{day} {time} - {centre}`; the *values* interpolated
+        // into it are Arabic.
+        'stepAppointmentSub',
+        // A URL. Translating a hostname produces a link that goes nowhere.
+        'createHintListing',
+        // A phone-number shape, not a word. `05xxxxxxxx` is the placeholder the
+        // design shows; an Arabic transliteration of the x-run would be noise.
+        'createHintSellerPhone',
+      };
 
       final List<String> untranslated = <String>[
         for (final String key in enKeys)
@@ -172,16 +192,48 @@ void main() {
       //
       // Placeholders are excluded because `{city}` is supposed to be Latin, and
       // the brand is excluded because it is Latin by design.
-      const Set<String> latinAllowed = <String>{'appName'};
+      //
+      // The second and third entries are the design's own Latin-shaped values —
+      // the listing-URL hint and the phone hint. Neither can be Arabic: one is a
+      // hostname and the other is a digit pattern. They are excluded here for the
+      // same reason they are in `intentionallySame` above, and the two lists are
+      // deliberately separate so a key cannot quietly acquire an excuse in one
+      // test but not the other.
+      const Set<String> latinAllowed = <String>{
+        'appName',
+        'createHintListing',
+        'createHintSellerPhone',
+      };
       final RegExp placeholder = RegExp(r'\{[a-zA-Z]+\}');
       final RegExp latinWord = RegExp(r'[A-Za-z]{2,}');
+
+      // ICU plural and select arguments are English *by definition*: gen-l10n
+      // writes `{count, plural, =2 {فحص} other {فحص}}`, and `plural`, `other` and
+      // `=2` are keywords the runtime consumes, not text a reader ever sees.
+      //
+      // They are stripped rather than allowlisted, because allowlisting these four
+      // keys would also switch off the check for the Arabic inside them — which is
+      // the part worth checking. The three steps are applied in order because each
+      // unbalances the braces the next one relies on.
+      final RegExp icuHeader = RegExp(
+        r'\{[a-zA-Z]+\s*,\s*(?:plural|select)\s*,',
+      );
+      // `=2` exact matches, and the bare category keywords. None of these words
+      // occur in an Arabic value, so removing them cannot eat real text.
+      final RegExp icuKeyword = RegExp(
+        r'=\d+\s*|\b(?:zero|one|two|few|many|other)\b\s*',
+      );
 
       final List<String> offenders = <String>[];
       _readArb('lib/l10n/arb/app_ar.arb').forEach((String key, dynamic value) {
         if (key.startsWith('@') || latinAllowed.contains(key)) return;
         if (value is! String) return;
-        // Strip placeholders first, so `{city}` is not itself read as English.
-        final String withoutPlaceholders = value.replaceAll(placeholder, '');
+        // Strip ICU syntax first, then placeholders, so `{count}` is not itself
+        // read as English.
+        final String withoutPlaceholders = value
+            .replaceAll(icuHeader, '')
+            .replaceAll(icuKeyword, '')
+            .replaceAll(placeholder, '');
         if (latinWord.hasMatch(withoutPlaceholders)) {
           offenders.add('$key = $value');
         }

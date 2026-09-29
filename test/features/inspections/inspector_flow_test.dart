@@ -39,7 +39,7 @@ const UserProfile _signedInInspector = UserProfile(
   fullName: 'Karim Adel',
   email: 'karim@example.com',
   role: UserRole.inspector,
-  locationCity: 'Cairo',
+  locationCity: 'Dammam',
   rating: 4.5,
 );
 
@@ -54,7 +54,7 @@ const UserProfile _unratedInspector = UserProfile(
   fullName: 'Karim Adel',
   email: 'karim@example.com',
   role: UserRole.inspector,
-  locationCity: 'Cairo',
+  locationCity: 'Dammam',
 );
 
 class _UnratedAuthController extends AuthController {
@@ -171,7 +171,7 @@ void main() {
         findsNothing,
         reason: 'a claimed request is not available to be claimed',
       );
-      expect(find.text(l10n.boardTitle('Cairo')), findsOneWidget);
+      expect(find.text(l10n.boardTitle('Dammam')), findsOneWidget);
     });
 
     testWidgets('an empty board says so and names the city', (
@@ -181,7 +181,7 @@ void main() {
       final AppLocalizations l10n = _l10nOf(tester);
 
       expect(find.text(l10n.boardEmptyTitle), findsOneWidget);
-      expect(find.text(l10n.boardEmptyBody('Cairo')), findsOneWidget);
+      expect(find.text(l10n.boardEmptyBody('Dammam')), findsOneWidget);
     });
 
     testWidgets('a failed board load is retryable', (
@@ -247,7 +247,7 @@ void main() {
       // The page action and the dialog action share the same label, so the
       // dialog's button is found inside the dialog, not on screen-wide text.
       expect(find.text(l10n.acceptConfirmTitle), findsOneWidget);
-      expect(find.text(l10n.acceptConfirmBody('Cairo')), findsOneWidget);
+      expect(find.text(l10n.acceptConfirmBody('Dammam')), findsOneWidget);
       await tester.tap(find.descendant(
         of: find.byType(AlertDialog),
         matching: find.widgetWithText(FilledButton, l10n.actionAccept),
@@ -510,7 +510,7 @@ void main() {
 
       expect(find.text('Karim Adel'), findsOneWidget);
       expect(find.text(l10n.roleInspector), findsOneWidget);
-      expect(find.text('Cairo'), findsWidgets);
+      expect(find.text('Dammam'), findsWidgets);
       expect(find.text('4.50'), findsOneWidget);
       expect(find.text(l10n.actionSignOut), findsOneWidget);
     });
@@ -524,7 +524,7 @@ void main() {
       );
       final FakeInspectionRepository repository = FakeInspectionRepository(
         requests: <InspectionRequest>[
-          buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Cairo'),
+          buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Dammam'),
         ],
       );
       await _pump(
@@ -538,7 +538,7 @@ void main() {
       final AppLocalizations l10n = _l10nOf(tester);
 
       // The board is scoped to the profile's city before anything is edited.
-      expect(find.text(l10n.boardTitle('Cairo')), findsOneWidget);
+      expect(find.text(l10n.boardTitle('Dammam')), findsOneWidget);
 
       await tester.tap(find.text(l10n.navProfile));
       await tester.pumpAndSettle();
@@ -548,21 +548,21 @@ void main() {
       // Open the picker sheet inside the dialog, then pick a different city.
       await tester.tap(find.byType(CityPicker).last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Giza').last);
+      await tester.tap(find.text('Jeddah').last);
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, l10n.actionSave));
       await tester.pumpAndSettle();
 
-      expect(auth.updatedCities, <String>['Giza']);
+      expect(auth.updatedCities, <String>['Jeddah']);
       expect(find.text(l10n.profileCityUpdated), findsOneWidget);
       // The profile row now shows the new canonical city.
-      expect(find.text('Giza'), findsWidgets);
+      expect(find.text('Jeddah'), findsWidgets);
 
       // The board header follows the new service city.
       await tester.tap(find.text(l10n.navJobBoard));
       await tester.pumpAndSettle();
-      expect(find.text(l10n.boardTitle('Giza')), findsOneWidget);
-      expect(find.text(l10n.boardTitle('Cairo')), findsNothing);
+      expect(find.text(l10n.boardTitle('Jeddah')), findsOneWidget);
+      expect(find.text(l10n.boardTitle('Dammam')), findsNothing);
     });
 
     testWidgets('an inspector without ratings is told so', (

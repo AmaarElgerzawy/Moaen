@@ -215,7 +215,7 @@ void main() {
         _app(
           FakeAuthRepository(
             userId: 'user-2',
-            profile: _profile(role: UserRole.inspector, city: 'Cairo'),
+            profile: _profile(role: UserRole.inspector, city: 'Dammam'),
           ),
         ),
       );
@@ -254,14 +254,14 @@ void main() {
         _app(
           FakeAuthRepository(
             userId: 'user-1',
-            profile: _profile(role: UserRole.inspector, city: 'Alexandria'),
+            profile: _profile(role: UserRole.inspector, city: 'Riyadh'),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
       // The board greets with the service city even when it is empty.
-      expect(find.textContaining('Alexandria'), findsOneWidget);
+      expect(find.textContaining('Riyadh'), findsOneWidget);
 
       await tester.tap(find.text('Profile'));
       await tester.pumpAndSettle();
@@ -269,7 +269,7 @@ void main() {
       // The profile tab, like the old role screen, shows the role and the
       // service city the buyer-facing side of the app shows when hiring.
       expect(find.text('Inspector'), findsOneWidget);
-      expect(find.text('Alexandria'), findsOneWidget);
+      expect(find.text('Riyadh'), findsOneWidget);
     });
   });
 

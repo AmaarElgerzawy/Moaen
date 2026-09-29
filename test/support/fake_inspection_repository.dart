@@ -254,7 +254,7 @@ InspectionRequest buildRequest({
   int year = 2019,
   String phone = '+201000000001',
   String address = '12 Nile Street',
-  String city = 'Cairo',
+  String city = 'Dammam',
   String? centre,
   InspectionStatus status = InspectionStatus.pending,
   double price = 500,

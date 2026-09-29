@@ -103,7 +103,7 @@ class _GreetingBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: AppColors.slate,
+        color: AppColors.darkHeader,
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
@@ -154,7 +154,7 @@ class _HeroBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
-        color: AppColors.emerald,
+        color: AppColors.green,
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Column(
@@ -194,7 +194,7 @@ class _HeroBanner extends StatelessWidget {
               onPressed: onRequest,
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: AppColors.emerald,
+                foregroundColor: AppColors.green,
               ),
               child: Text(action),
             ),
@@ -465,10 +465,12 @@ class _CostBreakdown extends StatelessWidget {
     // approved and the number they now see cannot disagree. A single source for
     // the split matters: two screens deriving it differently is how a buyer ends
     // up wondering what changed.
-    final CostEstimate estimate = CostEstimate(
-      inspectionFee: price,
-      travelFee: 0,
-    );
+    //
+    // `price` is the buyer's stated budget, which is not one of the three lines —
+    // it is the ceiling they set. The buyer's own bill is the standard split, so
+    // that is what is shown; the budget is not restated here as though it were a
+    // charge.
+    const CostEstimate estimate = CostEstimate.standard;
 
     return Container(
       // The same light-green estimate surface as the create form's box, so the
@@ -487,12 +489,22 @@ class _CostBreakdown extends StatelessWidget {
             style: Theme.of(context).textTheme.labelLarge,
           ),
           const SizedBox(height: AppSpacing.sm),
-          _CostRow(label: l10n.costInspection, value: estimate.inspectionFee),
           _CostRow(
-            label: l10n.costTravel,
-            value: estimate.travelFee,
-            freeWhenZero: true,
+            label: l10n.invoiceInspectorFee,
+            value: estimate.inspectorFee,
           ),
+          _CostRow(
+            label: l10n.invoicePlatformFee,
+            value: estimate.platformFee,
+          ),
+          // The centre is chosen by the inspector during the coordination window,
+          // so on a request that has not reached that point there is no centre
+          // line to show — only the design's "determined later" marker.
+          if (estimate.isCenterFeePending)
+            _PendingCostLine(
+              label: l10n.invoiceCentreFee,
+              marker: l10n.invoiceCentrePending,
+            ),
           const SizedBox(height: AppSpacing.xs),
           _CostRow(
             label: l10n.costTotal,
@@ -512,46 +524,83 @@ class _CostBreakdown extends StatelessWidget {
   }
 }
 
+/// A cost line whose amount is not known yet — the centre's fee before an
+/// inspector has picked one.
+///
+/// Shown as its own widget rather than a `_CostRow` with a nullable value,
+/// because "not yet known" and "zero" are different claims and a single row that
+/// can render either will eventually render the wrong one.
+class _PendingCostLine extends StatelessWidget {
+  const _PendingCostLine({required this.label, required this.marker});
+
+  final String label;
+  final String marker;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      // A Column, not a Row: the design puts this marker at the far end of the
+      // line, but the marker is a full sentence ("⏳ يُحدد بعد اختيار المركز
+      // بواسطة المعاين") and in a Row the *value* is laid out first with
+      // unbounded width, so it claims the whole line and overflows. Putting it on
+      // its own line under the label is the only layout that cannot overflow, and
+      // it is still left-aligned with the rest of the box.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(label, style: AppText.secondary(13)),
+          const SizedBox(height: 2),
+          Text(marker, style: AppText.pill(11, color: AppColors.warning)),
+        ],
+      ),
+    );
+  }
+}
+
 class _CostRow extends StatelessWidget {
   const _CostRow({
     required this.label,
     required this.value,
     this.emphasise = false,
-    this.freeWhenZero = false,
   });
 
   final String label;
   final double value;
   final bool emphasise;
-  final bool freeWhenZero;
 
   @override
   Widget build(BuildContext context) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
     final TextTheme text = Theme.of(context).textTheme;
-    final String shown = freeWhenZero && value == 0
-        ? l10n.costFree
-        : CostEstimate.format(value);
+    final String shown = CostEstimate.format(value);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            label,
-            style: emphasise
-                ? text.titleSmall
-                : text.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+          // Flexible, not bare: the design's line labels are sentences
+          // ("أتعاب المعاين (التنسيق والجدولة)"), and a `Row` hands its
+          // non-flex children unbounded width, so an unconstrained label
+          // overflows a phone rather than wrapping onto a second line.
+          Expanded(
+            child: Text(
+              label,
+              style: emphasise
+                  ? text.titleSmall
+                  : text.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: AppSpacing.sm),
           Text(
             shown,
+            textAlign: TextAlign.end,
             style: emphasise
                 ? text.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: AppColors.emerald,
+                    color: AppColors.green,
                   )
                 : text.bodyMedium,
           ),

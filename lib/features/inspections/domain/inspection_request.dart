@@ -84,8 +84,8 @@ class InspectionRequest {
   final String sellerLocationAddress;
 
   /// The city the request is posted in, and the only city whose inspectors see
-  /// it. Distinct from where the car is: the buyer asks from Cairo and the
-  /// seller may be in Giza, and the job board is scoped by this column because
+  /// it. Distinct from where the car is: the buyer asks from Dammam and the
+  /// seller may be in Jeddah, and the job board is scoped by this column because
   /// it is the inspector's service area, not the car's location.
   final String city;
 
