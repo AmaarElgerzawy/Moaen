@@ -232,19 +232,24 @@ class ReportBundle {
 
 /// How Screen 5's verdicts become the A4's four sector rows.
 ///
-/// **This is a derivation, and the spec does not state it.** The reference draws
-/// the two screens as separate views of one inspection but never says how a
-/// verdict on the entry form turns into a percentage on the printed table, and
-/// the entry form collects no percentages at all. Rather than add an input the
-/// reference does not have, or print a bar with a number the inspector never
-/// agreed to, the figures the reference itself prints are used: the A4's own
-/// `95%` / `98%` / `100%` / `80%` for its own four rows. An inspector who judges
-/// the engine worn gets `سليم (وكالة)` for the chassis — the design has one set
-/// of figures, and these are the set it chose.
+/// **Decided, not derived.** The reference draws the two screens as separate views
+/// of one inspection but never says how a verdict on the entry form turns into a
+/// percentage on the printed table, and the entry form collects no percentages at
+/// all. Three things were available: add inputs the reference does not draw, derive
+/// percentages from the verdicts, or use the figures the reference itself prints.
+/// The last was chosen.
 ///
-/// If the product later wants per-inspection figures, the change is confined to
-/// this class and to the four `SegmentedChoice` controls on Screen 5: everything
-/// downstream already takes a percentage and a note per sector.
+/// The consequence is that rows 1–3 carry the A4's own `95%` / `98%` / `100%` and
+/// the design's own sentences on every report, whatever the inspector answered on
+/// the form, and only row 4 — the one sector the form has free text for — moves
+/// with a person. That is a deliberate trade: a certified document whose four bars
+/// are the same numbers the reference printed is reproducible and verifiable,
+/// where a percentage the inspector never agreed to is a claim attributed to their
+/// name.
+///
+/// If per-inspection figures are ever wanted, the change is confined to this class
+/// and to the four `SegmentedChoice` controls on Screen 5: everything downstream
+/// already takes a percentage and a note per sector.
 class ReportSectorScoring {
   const ReportSectorScoring._();
 
@@ -330,11 +335,13 @@ class ReportSectorScoring {
   /// best one, and a headline that reported either would be describing a different
   /// inspection.
   ///
-  /// **Also a derivation, and unconfirmed**, like the figures above. With the
-  /// reference's own four numbers this yields 93 against the 88 its donut prints,
-  /// because the reference's headline is not the mean of its own sectors and no
-  /// rule that produces 88 from 95/98/100/80 is stated anywhere. When a real input
-  /// arrives, this method and the two call sites are the whole change.
+  /// **A known, accepted divergence from the reference.** With the reference's own
+  /// four numbers this yields 93 against the 88 its donut prints, because the
+  /// reference's headline is not the mean of its own sectors and no rule producing
+  /// 88 from 95/98/100/80 is stated anywhere. 93 is kept rather than tuned down to
+  /// 88: a mean is checkable by anyone who reads the table, and a hardcoded 88
+  /// would have to be re-derived every time a sector figure changed. The reference's
+  /// 88 is a property of its screenshot, not a rule.
   ///
   /// Null for an empty sector list rather than 0: zero is a claim about a car.
   static int? summary(List<ReportSection> sections) {

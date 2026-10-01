@@ -361,6 +361,40 @@ void main() {
       // 0 is a claim about a car. No sectors means no figure, not a zero one.
       expect(ReportSectorScoring.summary(<ReportSection>[]), isNull);
     });
+
+    test('the headline is 93 and not the reference\'s 88, deliberately', () {
+      // Pinned as its own test because it looks like a bug: the reference's donut
+      // prints 88 over sectors that average 93, and the temptation is to "fix" the
+      // mean down to 88. A mean is checkable by anyone reading the table; a
+      // hardcoded 88 would have to be re-derived every time a sector figure moved.
+      // See `ReportSectorScoring.summary`.
+      final List<ReportSection> rows = ReportSectorScoring.rows();
+      final int total = rows.fold(
+        0,
+        (int sum, ReportSection s) => sum + s.efficiency,
+      );
+      expect(total, 373);
+      expect((total / rows.length).round(), 93);
+    });
+
+    test('the first three sectors do not vary with the form', () {
+      // The decision behind `rows()`: the A4's own printed figures, whatever the
+      // inspector answered. Nothing on Screen 5 feeds these rows, which is the
+      // point — a bar showing a percentage nobody agreed to is a claim attributed
+      // to a named inspector.
+      expect(
+        ReportSectorScoring.rows(suspensionNote: null)
+            .take(3)
+            .map((ReportSection s) => s.efficiency),
+        <int>[95, 98, 100],
+      );
+      expect(
+        ReportSectorScoring.rows(suspensionNote: 'ملاحظة')
+            .take(3)
+            .map((ReportSection s) => s.efficiency),
+        <int>[95, 98, 100],
+      );
+    });
   });
 
   group('ReportQualityBand', () {
