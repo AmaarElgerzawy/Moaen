@@ -794,6 +794,14 @@ class ReportTableRow extends StatelessWidget {
 }
 
 /// The report's attachment grid: four dashed placeholders.
+///
+/// [ReportBundle.media] holds the report's real photographs and is deliberately
+/// not rendered here. The design prints a caption and a glyph in each of these four
+/// boxes — `📷 صورة زوايا السيارة` — and not a picture, so a thumbnail here would
+/// be something the reference does not draw. What the four boxes are is the
+/// design's *description* of the four things a report is expected to carry; the
+/// inspector's photographs are the record behind that description, and they live
+/// in `report_media` where the entry form can show them.
 class ReportAttachments extends StatelessWidget {
   const ReportAttachments({required this.slots, super.key});
 

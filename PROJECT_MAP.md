@@ -174,9 +174,16 @@ lib/
     home/  role_landing_page
     inspections/
       data/         inspection_repository      all car_inspections I/O + 3 enforced transitions
-      domain/       inspection_request · inspection_draft
+                    report_repository          inspection_reports + its sectors and parts
+                    media_repository           report_media + the inspection-media bucket
+                    centre_repository          the bookable centres in one city
+                    photo_picker.dart          the gallery, behind an interface
+      domain/       inspection_request · inspection_draft · inspection_report ·
+                    inspection_centre · report_media
       application/  inspection_controller      myRequests / dashboard / jobBoard / myJobs /
                                                 inspectorJob (+ accept · start · complete)
+                                                reportMedia / photoPicker providers,
+                                                ReportController.issue(draft, photos:)
       presentation/ client screens (dashboard, create, my requests, request detail)
                     inspector_home_page        NavigationBar: Job board | My jobs | Profile
                     inspector_job_detail_page  status-driven accept/start/complete
@@ -191,6 +198,16 @@ supabase/
   migrations/0005_cities.sql      canonical Egyptian city list (P10); the one
                                   deliberate anon SELECT, because the picker
                                   is on the pre-auth sign-up form
+  migrations/0006_cities_saudi.sql  Saudi city list appended to public.cities
+  migrations/0007_inspection_detail.sql  centre booking, the A4's two child
+                                  tables, and the columns that replace the
+                                  seven superseded 1-5 ratings
+  migrations/0008_seed_centres.sql  the approved Saudi centres
+  migrations/0009_approval_and_report_flow.sql  **authored, unapplied** — the
+                                  buyer's approval, the frozen `client_name` /
+                                  `inspector_name`, and the trigger rules that
+                                  stop a buyer advancing their own inspection.
+                                  Every statement is re-runnable.
   config.toml
 test/
   core/localization_test.dart     RTL default, fallback, translation coverage
@@ -221,7 +238,7 @@ Verified by querying the catalog of the live project after `supabase db push`:
 
 | Property | Expected | Live |
 |---|---|---|
-| Migrations applied | 0001–0005 | 0001, 0002, 0003, 0004, 0005 |
+| Migrations applied | 0001–0008 | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008. **0009 is authored and pending** — verified by probing the live PostgREST schema cache: `car_inspections.client_name` and `.inspector_name` both return `PGRST204 column … does not exist`, while every 0006–0008 object resolves. Until it is applied, request creation fails outright, because `InspectionDraft.toRow` writes `client_name` on every row. |
 | Tables | 6 | 6 (+ `inspector_profiles` view) |
 | Primary keys | 6 | 6 |
 | Foreign keys | 5 among app tables | 6 — the sixth is `users.id → auth.users.id` |
@@ -489,8 +506,8 @@ Only B3 stands between the project and M5.
 | P1 | `users.rating` has no source table. | Needs a `reviews` table and a rule for who may review. |
 | P2 | Escrow release / refund endpoint. | D1. A service-role Edge Function plus an audit log. |
 | P3 | PDF report generation. | `pdf_report_url` stays nullable until then. |
-| P4 | Media and PDF upload UI. | Buckets and policies exist (0003); only the client side is missing. |
-| P5 | ~~Job board, request creation, report entry.~~ **Mostly done** — the client flow (create, dashboard tracker, list, detail) and the inspector flow (city-scoped job board, my jobs, profile, accept → start → complete) are built and tested. Still open: **report entry** — the inspector's report form and its media upload. | The `enforce_inspection_transition` trigger makes every status move the UI already performs irreversible and properly ordered; report entry is next because it is the inspector's one remaining screen. |
+| P4 | ~~Media and PDF upload UI.~~ **Photos done** — Screen 5's photo card opens the device gallery through `PhotoPicker`, the chosen files are uploaded to `inspection-media/{inspection_id}/{stamp}.{ext}` and inserted into `report_media` by `MediaRepository`, in the order they were picked, before the report is certified. **PDF upload still open**: `pdf_report_url` stays nullable (P3) and nothing writes it. | The PDF half is a different artefact and a different audience — a generated document rather than a photograph of a car — so it is not blocked on this. |
+| P5 | ~~Job board, request creation, report entry.~~ **done** — the client flow (create, dashboard tracker, list, detail), the inspector flow (city-scoped job board, my jobs, profile, accept → start → complete) and report entry (OBD, body, mechanics, estimate, photos, issue → A4) are built and tested. | Nothing outstanding here. Note the A4's four attachment boxes are caption tiles, as the reference draws them, and deliberately do not show the photographs `report_media` holds. |
 | P6 | ~~Arabic UI and RTL.~~ **done** — `flutter_localizations` + ARB (`lib/l10n/arb/app_{en,ar}.arb`), Arabic default and fallback, `Directionality` resolved by `MaterialApp` and asserted in `test/core/localization_test.dart`. Android launcher label localised via `values/strings.xml` and `values-ar/strings.xml`. |
 | P7 | Notifications on status change. | No push provider selected. |
 | P8 | Inspector payouts. | Follows the D1 escrow outcome. |

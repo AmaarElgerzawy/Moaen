@@ -26,6 +26,11 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Screen 5's photo card. iOS grants no library access without a stated
+	     reason, and the reason has to name the feature: an inspector attaching
+	     evidence photographs to a report they are about to certify. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>يختار المفتش صور الفحص ليُرفقها بالتقرير.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

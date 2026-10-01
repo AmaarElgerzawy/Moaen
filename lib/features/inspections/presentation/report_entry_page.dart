@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
@@ -10,6 +11,7 @@ import '../data/inspection_repository.dart';
 import '../data/report_repository.dart';
 import '../domain/inspection_report.dart';
 import '../domain/inspection_request.dart';
+import '../domain/report_media.dart';
 import 'widgets/design_widgets.dart';
 
 /// Screen 5: the inspector enters the inspection's findings.
@@ -23,11 +25,10 @@ import 'widgets/design_widgets.dart';
 /// nothing is collapsed, because the order *is* the reading order of a physical
 /// inspection: computer, body, mechanics, then the numbers that follow from them.
 ///
-/// The photo slots are placeholders in this build. The reference draws four
-/// squares — three filled, one dashed — and this screen renders that exact shape;
-/// wiring a camera into them is a separate subsystem (see `report_media`) and
-/// pretending the squares are tappable while they are not would be worse than
-/// leaving them as the design draws them.
+/// The photo slots are real. The `+ إضافة` tile opens the device's gallery and
+/// the chosen photos are uploaded to `inspection-media` and attached to the report
+/// when the inspector issues it — which is the only moment a `report_media` row can
+/// exist, since the table is keyed by a `report_id` that the issue itself creates.
 class ReportEntryPage extends ConsumerStatefulWidget {
   const ReportEntryPage({super.key, required this.id});
 
@@ -52,6 +53,16 @@ class _ReportEntryPageState extends ConsumerState<ReportEntryPage> {
   int _bodyChoice = -1;
   int _engineChoice = -1;
   int _gearboxChoice = -1;
+
+  /// Photos picked on this form but not yet uploaded.
+  ///
+  /// Held here rather than in a controller because it is an unsaved form input in
+  /// exactly the sense the three `TextEditingController`s above are: the bytes
+  /// belong to this editing session and go away if the inspector walks off. The
+  /// upload cannot happen at pick time — `report_media` is keyed by a report id
+  /// that does not exist until the issue — so [ReportController.issue] is what
+  /// writes them.
+  final List<XFile> _picked = <XFile>[];
 
   @override
   void dispose() {
@@ -129,6 +140,12 @@ class _ReportEntryPageState extends ConsumerState<ReportEntryPage> {
     final InspectionRequest request = bundle.requestWithCentre;
     final AsyncValue<void> issuing = ref.watch(reportControllerProvider);
     final Object? issueError = issuing.error;
+    // Failures are not shown: the grid's own caption is what says whether the
+    // report has photos, and a report with no photos yet is a normal state rather
+    // than an error worth a line of red text above the issue button.
+    final List<ReportMedia> attached =
+        ref.watch(reportMediaProvider(bundle.report.id)).value ??
+        const <ReportMedia>[];
 
     return Form(
       key: _formKey,
@@ -204,7 +221,11 @@ class _ReportEntryPageState extends ConsumerState<ReportEntryPage> {
                 const SizedBox(height: AppSpacing.md),
                 _MoneyCard(repair: _repair, bundle: bundle),
                 const SizedBox(height: AppSpacing.md),
-                _PhotosCard(count: 3),
+                _PhotosCard(
+                  media: attached,
+                  picked: _picked,
+                  onAdd: _addPhoto,
+                ),
                 const SizedBox(height: AppSpacing.md),
                 _Attestation(),
                 if (issueError != null) ...<Widget>[
@@ -248,6 +269,23 @@ class _ReportEntryPageState extends ConsumerState<ReportEntryPage> {
     );
   }
 
+  /// Opens the gallery and appends whatever comes back.
+  ///
+  /// Null is the inspector dismissing the picker, which is not an error and is not
+  /// announced. A gallery can also come back having been emptied by the OS between
+  /// picking and reading, so a read failure is swallowed the same way: the tile
+  /// simply does not gain a photo.
+  Future<void> _addPhoto() async {
+    try {
+      final XFile? file = await ref.read(photoPickerProvider).pickFromGallery();
+      if (file == null || !mounted) return;
+      setState(() => _picked.add(file));
+    } on Object {
+      // No picker on this platform, or the gallery refused. The rest of the form
+      // is unaffected — photos are evidence, not a precondition for issuing.
+    }
+  }
+
   Future<void> _issue(ReportBundle bundle) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (_obdChoice < 0 || _bodyChoice < 0) {
@@ -289,7 +327,9 @@ class _ReportEntryPageState extends ConsumerState<ReportEntryPage> {
     );
 
     try {
-      await ref.read(reportControllerProvider.notifier).issue(draft);
+      await ref
+          .read(reportControllerProvider.notifier)
+          .issue(draft, photos: _picked);
       if (!mounted) return;
       _toast(l10n.reportCertified);
       // Not awaited: `pushReplacementNamed`'s result is the popped route's, and
@@ -575,46 +615,106 @@ class _MoneyCard extends StatelessWidget {
   }
 }
 
-/// `📷 صور الفحص الميداني والتوثيق` — three filled slots and one dashed add.
+/// `📷 صور الفحص الميداني والتوثيق` — the stored photos, the ones just picked, and
+/// the tile that adds the next.
 ///
-/// Not interactive in this build. The design's fourth tile is an invitation to
-/// add a photo, and the honest rendering of a control that cannot work yet is a
-/// slot that does not accept the tap — see the class doc.
+/// Column-major into two columns, so the design's exact arrangement — photo 1 and
+/// photo 3 in the first column, photo 2 and `+ إضافة` in the second — falls out of
+/// the ordering rather than being drawn. It also grows correctly past three photos,
+/// which the design's fixed four-tile `.two` has no room for.
+///
+/// The two columns are not called left and right because this screen is an RTL
+/// container: a `Row` puts its first child at the physical right, so the first
+/// column is the one on the right. See the pinned-geometry assertions in
+/// `test/features/inspections/report_photos_test.dart`.
+///
+/// No removal control, and that is the database's decision rather than an
+/// omission: `report_media` grants insert and select and nothing else, so a photo
+/// already attached to a report cannot be deleted through this client at all.
+/// Offering a control that silently does nothing would be worse than not drawing
+/// one.
 class _PhotosCard extends StatelessWidget {
-  const _PhotosCard({required this.count});
+  const _PhotosCard({
+    required this.media,
+    required this.picked,
+    required this.onAdd,
+  });
 
-  /// How many filled slots to draw. Three, because the design draws three and
-  /// because a photo count is not a thing a form can ask a person to guess.
-  final int count;
+  /// Already attached to the report, carrying signed URLs.
+  final List<ReportMedia> media;
+
+  /// Picked on this form, not yet uploaded.
+  final List<XFile> picked;
+
+  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
 
+    // Stored photos first, in the order they were attached, then this session's.
+    // The report's own evidence leads because that is what a reopened form is
+    // showing: what is already on the document.
+    final List<Widget> firstColumn = <Widget>[];
+    final List<Widget> secondColumn = <Widget>[];
+
+    int placed = 0;
+    void place(Widget tile) {
+      // Column-major, matching the design: the first two tiles are the top row.
+      if (placed.isEven) {
+        firstColumn.add(tile);
+      } else {
+        secondColumn.add(tile);
+      }
+      placed++;
+    }
+
+    for (final ReportMedia photo in media) {
+      place(
+        PhotoSlot(
+          // The caption only survives as the fallback for an image that fails to
+          // load — an expired signed URL, or an object removed server-side. It is
+          // still the right thing to show there, because it names which photo of
+          // the inspection failed rather than just admitting one did.
+          label: l10n.reportPhotoSlot(placed + 1),
+          imageUrl: photo.url,
+        ),
+      );
+    }
+    for (final XFile file in picked) {
+      place(
+        PhotoSlot(label: l10n.reportPhotoSlot(placed + 1), localPath: file.path),
+      );
+    }
+
+    // The add tile goes last in reading order and therefore second in the second
+    // column, which is the design's position.
+    final Widget addTile = PhotoSlot(label: l10n.reportPhotoAdd, onTap: onAdd);
+    if (placed.isEven) {
+      firstColumn.add(addTile);
+    } else {
+      secondColumn.add(addTile);
+    }
+
+    Widget column(List<Widget> tiles) => Column(
+      children: <Widget>[
+        for (int i = 0; i < tiles.length; i++) ...<Widget>[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          tiles[i],
+        ],
+      ],
+    );
+
     return TitledCard(
       title: l10n.reportPhotosTitle,
+      // Two at a time, not the four the design's `.two` puts across. Four across
+      // on a 390dp screen is 90dp per tile, and these tiles are square with an 11dp
+      // caption — unreadable. The two-by-two arrangement keeps every tile at the
+      // size its caption needs, and [TwoUp] is the design's own two-column row.
+      // It asserts two children, and this layout always has two: the add tile is
+      // placed into one column or the other, never both.
       child: TwoUp(
-        // Two at a time. The design's `.two` puts four across on a 390dp
-        // screen, which is 90dp per tile; the design's own tiles are square with
-        // an 11dp caption, and four across is unreadable. The two-by-two
-        // arrangement keeps every tile at the size its caption needs, and
-        // [TwoUp] is the design's own two-column row.
-        children: <Widget>[
-          Column(
-            children: <Widget>[
-              PhotoSlot(label: l10n.reportPhotoSlot(1)),
-              const SizedBox(height: AppSpacing.sm),
-              PhotoSlot(label: l10n.reportPhotoSlot(3)),
-            ],
-          ),
-          Column(
-            children: <Widget>[
-              PhotoSlot(label: l10n.reportPhotoSlot(2)),
-              const SizedBox(height: AppSpacing.sm),
-              PhotoSlot(label: l10n.reportPhotoAdd),
-            ],
-          ),
-        ],
+        children: <Widget>[column(firstColumn), column(secondColumn)],
       ),
     );
   }

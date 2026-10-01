@@ -1,4 +1,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Reading the photo library for Screen 5's `📷 صور الفحص الميداني والتوثيق`
+         card. `READ_MEDIA_IMAGES` is the Android 13+ permission and
+         `READ_EXTERNAL_STORAGE` its predecessor, capped at API 32 because API 33
+         ignores it.
+
+         Note that `image_picker` itself does not need either: on Android 13+ it
+         goes through the system photo picker, which hands back a granted URI with
+         no permission involved, and on older releases it uses ACTION_GET_CONTENT,
+         which is likewise permissionless. They are declared because the product
+         decision was to read the library directly rather than rely on the picker
+         grant — and because an app that *does* read the library later must not
+         then discover it needs a release-blocking manifest change. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"

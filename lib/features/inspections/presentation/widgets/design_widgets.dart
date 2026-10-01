@@ -19,6 +19,7 @@
 ///    screens at once.
 library;
 
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show PathMetric;
 
@@ -1549,6 +1550,7 @@ class PhotoSlot extends StatelessWidget {
     required this.label,
     this.onTap,
     this.imageUrl,
+    this.localPath,
     super.key,
   });
 
@@ -1559,19 +1561,33 @@ class PhotoSlot extends StatelessWidget {
   /// nothing in it, which is the state the design draws.
   final String? imageUrl;
 
+  /// A photo picked from the gallery that has not been uploaded yet.
+  ///
+  /// Separate from [imageUrl] because an unsaved photo has no URL at all — the
+  /// upload happens when the report is issued, because `report_media` needs a
+  /// report id that does not exist before then. The inspector still has to see the
+  /// photo they just chose while they are choosing the next one, so the local file
+  /// renders through the same slot and the caption disappears exactly as it does
+  /// for a stored photo.
+  final String? localPath;
+
   @override
   Widget build(BuildContext context) {
     final bool add = onTap != null;
-    final String? url = imageUrl;
+    final ImageProvider<Object>? image = imageUrl != null && imageUrl!.isNotEmpty
+        ? NetworkImage(imageUrl!)
+        : localPath == null
+        ? null
+        : FileImage(File(localPath!));
 
-    final Widget content = url == null
+    final Widget content = image == null
         ? Text(
             label,
             textAlign: TextAlign.center,
             style: AppText.pill(11, color: AppColors.textSecondary),
           )
-        : Image.network(
-            url,
+        : Image(
+            image: image,
             fit: BoxFit.cover,
             // A broken URL must not leave a raw exception box in the middle of a
             // report the inspector is about to attest to; the slot falls back to
@@ -1598,7 +1614,7 @@ class PhotoSlot extends StatelessWidget {
 
     final Widget slot = AspectRatio(
       aspectRatio: 1,
-      child: url == null && add
+      child: image == null && add
           // Dashed rather than solid, and 1.5dp rather than 1dp: the design's
           // add-tile is the only dashed *box* in the app, and that is what
           // distinguishes "there is nothing here, add something" from "here is
@@ -1616,7 +1632,7 @@ class PhotoSlot extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: url == null ? AppColors.photoFill : null,
+                color: image == null ? AppColors.photoFill : null,
                 borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: content,

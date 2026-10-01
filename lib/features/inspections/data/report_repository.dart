@@ -112,17 +112,17 @@ class ReportRepository {
       // whole job is to display a document.
       final List<List<Map<String, dynamic>>> children =
           await Future.wait(<Future<List<Map<String, dynamic>>>>[
-        _client
-            .from(_sections)
-            .select()
-            .eq('report_id', reportId)
-            .order('ordinal', ascending: true),
-        _client
-            .from(_parts)
-            .select()
-            .eq('report_id', reportId)
-            .order('ordinal', ascending: true),
-      ]);
+            _client
+                .from(_sections)
+                .select()
+                .eq('report_id', reportId)
+                .order('ordinal', ascending: true),
+            _client
+                .from(_parts)
+                .select()
+                .eq('report_id', reportId)
+                .order('ordinal', ascending: true),
+          ]);
 
       final InspectionRequest request = await _inspections.byId(inspectionId);
 

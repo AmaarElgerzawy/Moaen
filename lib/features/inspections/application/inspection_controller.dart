@@ -1,14 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../auth/auth_controller.dart';
 import '../../auth/user_profile.dart';
 import '../data/centre_repository.dart';
 import '../data/inspection_repository.dart';
+import '../data/media_repository.dart';
+import '../data/photo_picker.dart';
 import '../data/report_repository.dart';
 import '../domain/inspection_centre.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_report.dart';
 import '../domain/inspection_request.dart';
+import '../domain/report_media.dart';
 
 final inspectionRepositoryProvider = Provider<InspectionRepository>(
   (Ref ref) => InspectionRepository(ref.watch(supabaseClientProvider)),
@@ -299,6 +303,34 @@ final centresInCityProvider = FutureProvider.family<List<InspectionCentre>, Stri
 // Reports
 // ---------------------------------------------------------------------------
 
+final mediaRepositoryProvider = Provider<MediaRepository>(
+  (Ref ref) => MediaRepository(ref.watch(supabaseClientProvider)),
+);
+
+/// The device's photo library, behind a provider.
+///
+/// The seam that lets the report-entry form's photo control be driven in a widget
+/// test: override it with a fake that returns a file, and the whole
+/// pick-then-upload path runs without a gallery. See [PhotoPicker].
+final photoPickerProvider = Provider<PhotoPicker>(
+  (Ref ref) => const SystemPhotoPicker(),
+);
+
+/// The photos already attached to one report, keyed by its report id.
+///
+/// Separate from [reportBundleProvider] because the A4 report page has no use for
+/// them: the design prints four caption boxes under
+/// `المرفقات والصور الميدانية الموثقة` rather than thumbnails, so loading signed
+/// URLs there would mint a token per photo for a page that shows none of them.
+/// Only Screen 5 reads this.
+final reportMediaProvider = FutureProvider.family<List<ReportMedia>, String>((
+  Ref ref,
+  String reportId,
+) {
+  ref.watch(authControllerProvider);
+  return ref.watch(mediaRepositoryProvider).listForReport(reportId);
+});
+
 final reportRepositoryProvider = Provider<ReportRepository>(
   (Ref ref) => ReportRepository(
     ref.watch(supabaseClientProvider),
@@ -339,9 +371,10 @@ final myReportsProvider = FutureProvider<List<InspectionReport>>((Ref ref) async
   return reports;
 });
 
-/// Writes the report: the header row, its sectors, its chips, and the issue.
+/// Writes the report: the header row, its sectors, its chips, its photos, and the
+/// issue.
 ///
-/// One notifier for the four writes rather than four, because the design's issue
+/// One notifier for the five writes rather than five, because the design's issue
 /// button performs all of them in sequence and a form that could issue a document
 /// with its sectors missing is a document that is wrong. [issue] is the only
 /// public method, and it does the writes in order.
@@ -349,26 +382,43 @@ class ReportController extends Notifier<AsyncValue<void>> {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
-  /// Saves [draft], then certifies it.
+  /// Saves [draft] and [photos], then certifies.
   ///
   /// The order matters and is not reversed for speed: a report becomes citable at
   /// the moment of `certify`, and the buyer's reports tab and the A4's seal both
   /// key off that timestamp. Certifying first would publish a document whose
-  /// sectors and chips are still the previous draft's — or absent, on a first
-  /// issue.
+  /// sectors, chips and photos are still the previous draft's — or absent, on a
+  /// first issue.
+  ///
+  /// [photos] are the files the inspector picked on the form, held until now.
+  /// They are uploaded here rather than when picked because `report_media` is
+  /// append-only and keyed by `report_id`, and the report row does not exist until
+  /// [ReportRepository.upsert] has run. Uploading at pick time would mean either
+  /// creating the header row for a form the inspector may abandon, or holding
+  /// photos with no destination row to attach them to.
   ///
   /// Throws on failure and records it in [state], like the request writes, so a
   /// caller can either await the throw or read the state back.
-  Future<void> issue(ReportDraft draft) async {
+  Future<void> issue(ReportDraft draft, {List<XFile> photos = const <XFile>[]}) async {
     state = const AsyncLoading();
     try {
       final ReportRepository repository = ref.read(reportRepositoryProvider);
       final String reportId = await repository.upsert(draft);
       await repository.replaceSections(reportId, draft.sections);
       await repository.replaceParts(reportId, draft.parts);
+      if (photos.isNotEmpty) {
+        await ref
+            .read(mediaRepositoryProvider)
+            .attachAll(
+              inspectionId: draft.inspectionId,
+              reportId: reportId,
+              files: photos,
+            );
+      }
       await repository.certify(reportId);
       state = const AsyncData(null);
       ref.invalidate(reportBundleProvider(draft.inspectionId));
+      ref.invalidate(reportMediaProvider(reportId));
       ref.invalidate(myReportsProvider);
       ref.invalidate(inspectionRequestControllerProvider);
     } on Object catch (error, stackTrace) {

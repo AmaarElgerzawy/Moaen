@@ -27,7 +27,17 @@
 -- there is no centre and no total to approve before then. So the policy has to
 -- widen, and widening it alone would hand a buyer two powers they must not have.
 
-drop policy inspections_update_client_while_pending
+drop policy if exists inspections_update_client_while_pending
+  on public.car_inspections;
+
+-- Also dropping the policy this file creates, so a re-run after a partial
+-- application replaces it instead of failing on "policy already exists". Every
+-- statement below is written to be re-runnable, because the SQL Editor and the
+-- dashboard's query panel both run a pasted script as one transaction: one bad
+-- statement rolls the whole file back, and the natural next move is to paste it
+-- again. A file that can only ever be applied once is a file that cannot be
+-- recovered from.
+drop policy if exists inspections_update_client
   on public.car_inspections;
 
 -- `cancelled` is deliberately absent from the USING list: it is terminal, so
@@ -63,7 +73,7 @@ create policy inspections_update_client
 --
 -- Nullable, like every column 0007 added: the existing request predates this
 -- column, and inventing a name for it would be fabricating a record.
-alter table public.car_inspections add column client_name text;
+alter table public.car_inspections add column if not exists client_name text;
 
 -- The same problem, the other way round, and the reason the A4 report cannot
 -- simply read the inspector's name off `public.users` either. The report is a
@@ -80,7 +90,7 @@ alter table public.car_inspections add column client_name text;
 --
 -- Nullable for the same reason as `client_name`: the existing request predates
 -- the column, and its inspector — if it ever had one — is not recoverable.
-alter table public.car_inspections add column inspector_name text;
+alter table public.car_inspections add column if not exists inspector_name text;
 
 -- ============================================================================
 -- 3. The superseded 1-5 ratings
