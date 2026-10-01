@@ -9,7 +9,10 @@ import '../../features/inspections/presentation/client_dashboard_page.dart';
 import '../../features/inspections/presentation/create_request_page.dart';
 import '../../features/inspections/presentation/inspector_home_page.dart';
 import '../../features/inspections/presentation/inspector_job_detail_page.dart';
+import '../../features/inspections/presentation/inspector_market_page.dart';
 import '../../features/inspections/presentation/my_requests_page.dart';
+import '../../features/inspections/presentation/report_entry_page.dart';
+import '../../features/inspections/presentation/report_page.dart';
 import '../../features/inspections/presentation/request_detail_page.dart';
 import '../../features/home/role_landing_page.dart';
 
@@ -26,9 +29,22 @@ abstract final class AppRoutes {
   static const String myRequests = '/requests';
   static const String requestDetail = '/requests/:id';
 
+  /// The buyer's report and the inspector's form that produces it. Both are keyed
+  /// on the *inspection's* id, not the report row's, because the report row does
+  /// not exist until the form has been submitted once — so the buyer's reports
+  /// tab cannot link to a report by its own id without a lookup that would 404 on
+  /// the one screen a buyer reaches it from.
+  static const String report = '/requests/:id/report';
+  static const String reportEntry = '/requests/:id/report/entry';
+
   /// The inspector's home: board, my jobs, profile.
   static const String inspector = '/inspector';
   static const String inspectorJobDetail = '/inspector/jobs/:id';
+
+  /// The market the inspector picks jobs from. A separate pushed route rather
+  /// than a fifth tab, because the design gives the board's `عرض كل` a screen of
+  /// its own with no bottom bar at all.
+  static const String inspectorMarket = '/inspector/market';
 
   /// The detail path for one request, from the inspector's side.
   static String inspectorJobDetailPath(String id) => '/inspector/jobs/$id';
@@ -77,14 +93,34 @@ final routerProvider = Provider<GoRouter>((Ref ref) {
             RequestDetailPage(id: state.pathParameters['id'] ?? ''),
       ),
       GoRoute(
+        path: AppRoutes.reportEntry,
+        name: 'reportEntry',
+        builder: (_, GoRouterState state) =>
+            ReportEntryPage(id: state.pathParameters['id'] ?? ''),
+      ),
+      GoRoute(
+        path: AppRoutes.report,
+        name: 'report',
+        builder: (_, GoRouterState state) =>
+            ReportPage(id: state.pathParameters['id'] ?? ''),
+      ),
+      GoRoute(
         path: AppRoutes.inspector,
         builder: (_, _) => const InspectorHomePage(),
       ),
       GoRoute(
         path: AppRoutes.inspectorJobDetail,
-        name: 'inspectorJobDetail',
+        // `inspectorJob` rather than `inspectorJobDetail`: the job detail page is
+        // reached from the tasks list as often as from the board, and the two
+        // callers should not need to know which one they came off.
+        name: 'inspectorJob',
         builder: (_, GoRouterState state) =>
             InspectorJobDetailPage(id: state.pathParameters['id'] ?? ''),
+      ),
+      GoRoute(
+        path: AppRoutes.inspectorMarket,
+        name: 'inspectorMarket',
+        builder: (_, _) => const InspectorMarketPage(),
       ),
     ],
     redirect: (BuildContext context, GoRouterState state) {

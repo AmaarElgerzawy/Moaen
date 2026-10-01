@@ -6,8 +6,6 @@
     "description": "اسم المنتج. يبقى بالإنجليزية في كل اللغات لأنه الاسم التجاري المسجل، واسم التطبيق تحت الأيقونة منفصل (values/strings.xml)."
   },
 
-  "signInTitle": "تسجيل الدخول",
-  "registerTitle": "إنشاء حساب",
 
   "authSignInSubtitle": "سجّل الدخول للمتابعة.",
   "authRegisterSubtitle": "أنشئ حساباً لطلب فحص أو لتقديمه.",
@@ -77,61 +75,23 @@
   "phase1Title": "المرحلة 1 مكتملة",
   "phase1Body": "الهوية والأدوار وتحديد المدينة تعمل الآن. طلبات الفحص وسوق الطلبات وإدخال التقرير تأتي في المرحلة 2.",
 
-  "navRequests": "طلباتي",
-  "navDashboard": "الرئيسية",
 
-  "dashboardGreeting": "أهلاً، {name}",
-  "@dashboardGreeting": {
-    "placeholders": {
-      "name": { "type": "String" }
-    }
-  },
-  "dashboardActiveTitle": "طلبك النشط",
-  "dashboardReportReadyTitle": "تقريرك جاهز",
-  "dashboardCancelledTitle": "آخر طلب لك",
   "dashboardNoActiveTitle": "لا يوجد طلب نشط",
   "dashboardNoActiveBody": "احجز فحصاً قبل السفر لشراء سيارة. معاين محلي يفحصها ويرسل لك تقريراً.",
   "dashboardNewRequest": "اطلب فحصاً",
-  "dashboardViewRequests": "عرض كل الطلبات",
-  "dashboardReference": "رقم الطلب",
-  "dashboardSteps": "التقدم",
-  "dashboardStepRequested": "تم الطلب",
-  "dashboardStepMatched": "تعيين المعاين",
-  "dashboardStepInspecting": "الفحص",
-  "dashboardStepReport": "التقرير جاهز",
 
   "costTitle": "تقدير التكلفة",
-  "costInspection": "رسوم الفحص",
-  "costTravel": "التنقل",
-  "costTotal": "الإجمالي",
   "costEstimateNotice": "هذا تقدير. يتم الاتفاق على السعر النهائي مع المعاين قبل بدء الفحص.",
-  "costFree": "مجاناً",
 
   "createTitle": "طلب فحص جديد",
-  "createSectionVehicle": "بيانات السيارة",
-  "createSectionSeller": "البائع والموقع",
-  "createSectionNotes": "ملاحظات للمعاين",
-  "createNotesHint": "أي شيء يجب أن يعرفه المعاين: متى يمكن معاينة السيارة، وما يبدو غير طبيعي، ومدى موثوقية البائع.",
-  "createNotesOptional": "اختياري",
   "createSubmit": "إرسال الطلب",
-  "createSuccess": "تم إرسال الطلب {reference}. سيتولى معاين في {city} المهمة.",
-  "@createSuccess": {
-    "placeholders": {
-      "reference": { "type": "String" },
-      "city": { "type": "String" }
-    }
-  },
 
   "fieldCarMake": "الصانع",
   "fieldCarModel": "الموديل",
   "fieldCarYear": "سنة الصنع",
   "fieldSellerPhone": "جوال البائع",
-  "fieldSellerAddress": "أين السيارة؟",
   "fieldCity": "المدينة",
   "fieldInspectionCentre": "مركز الفحص",
-  "fieldBudget": "ميزانيتك (ر.س)",
-  "fieldBudgetHint": "المبلغ الذي تستعد لدفعه. يؤكده المعاين قبل البدء.",
-  "myRequestsTitle": "طلباتي",
   "myRequestsEmpty": "لم تطلب أي فحص بعد.",
   "myRequestsOpen": "مفتوحة",
   "myRequestsSettled": "منتهية",
@@ -143,26 +103,8 @@
   "requestCancelled": "تم إلغاء الطلب.",
 
   "navJobBoard": "سوق الطلبات",
-  "navMyJobs": "مهامي",
-  "navProfile": "الملف الشخصي",
 
-  "boardTitle": "المتاح في {city}",
-  "@boardTitle": {
-    "placeholders": {
-      "city": { "type": "String" }
-    }
-  },
-  "boardEmptyTitle": "لا توجد طلبات بعد",
-  "boardEmptyBody": "تظهر طلبات الفحص الجديدة في {city} هنا.",
-  "@boardEmptyBody": {
-    "placeholders": {
-      "city": { "type": "String" }
-    }
-  },
-  "boardLoadError": "تعذّر تحميل سوق الطلبات.",
 
-  "jobsEmpty": "لم تقبل أي فحص بعد.",
-  "jobsLoadError": "تعذّر تحميل مهامك.",
 
   "actionAccept": "قبول الفحص",
   "actionStart": "بدء الفحص",
@@ -182,13 +124,8 @@
   "inspectorAvailableNote": "متاح في مدينتك.",
   "inspectorAssignedNote": "هذا الفحص مُسند إليك.",
   "inspectorSettledNote": "هذا الفحص منتهٍ.",
-  "profileCityNotSet": "لم تُحدَّد مدينة الخدمة.",
 
-  "heroTitle": "احجز فحصاً جديداً",
-  "heroBody": "معاين معتمد يفحص السيارة في مكانها ويرسل لك تقريراً كاملاً.",
-  "heroAction": "اطلب الآن",
 
-  "createCityHelper": "تظهر الطلبات للمعاينين في هذه المدينة فقط.",
 
   "cityPickerTitle": "اختر المدينة",
   "cityPickerSearchHint": "ابحث عن مدينة",
@@ -198,16 +135,11 @@
   "profileEditCity": "تغيير مدينة الخدمة",
   "profileCityUpdated": "تم تحديث مدينة الخدمة.",
 
-  "actionCancel": "إلغاء",
-  "actionSave": "حفظ",
 
-  "boardLive": "مباشر",
-  "boardEmptyHint": "المدينة غير صحيحة؟ غيّر مدينة الخدمة من ملفك الشخصي.",
 
   "errorRequired": "هذا الحقل مطلوب",
   "errorInvalidYear": "أدخل سنة بين 1950 و2100",
   "errorInvalidPhone": "أدخل رقم جوال صحيحاً",
-  "errorInvalidBudget": "أدخل مبلغاً، مثال 500",
 
   "navHome": "الرئيسية",
   "navMyRequestsTab": "طلباتي",
@@ -222,13 +154,6 @@
   "buyerNewInspectionTitle": "فحص سيارة جديدة",
   "buyerNewInspectionBody": "اختر المدينة وسيحدد المعاين المركز الأنسب",
   "buyerNewInspectionAction": "اطلب +\nالآن",
-  "buyerActiveSection": "متابعة الطلب النشط",
-  "buyerActiveRequestLabel": "طلب {reference}",
-  "@buyerActiveRequestLabel": {
-    "placeholders": {
-      "reference": { "type": "String" }
-    }
-  },
   "buyerOrderCity": "المدينة: {city}",
   "@buyerOrderCity": {
     "placeholders": {
@@ -266,6 +191,13 @@
   "buyerNoticeTitle": "🔔 إشعار الموعد والمركز المحدد:",
   "buyerNoticeWillInspect": "سيتم فحص السيارة في",
   "buyerNoticeDay": "يوم",
+  "buyerNoticeCentre": "مركز {centre} ({city})",
+  "@buyerNoticeCentre": {
+    "placeholders": {
+      "centre": { "type": "String" },
+      "city": { "type": "String" }
+    }
+  },
   "buyerNoticeWhen": "{day} الساعة {time}",
   "@buyerNoticeWhen": {
     "placeholders": {
@@ -287,41 +219,14 @@
   "invoiceCentrePending": "⏳ يُحدد بعد اختيار المركز بواسطة المعاين",
   "invoiceInspectorFee": "أتعاب المعاين (التنسيق والجدولة)",
   "invoicePlatformFee": "رسوم منصة معاين (التوثيق)",
-  "invoiceEstimateTotalLabel": "الإجمالي التقديري الحالي:",
-  "invoiceEstimateTotalValue": "{total} + رسوم المركز",
-  "@invoiceEstimateTotalValue": {
-    "placeholders": {
-      "total": { "type": "String" }
-    }
-  },
   "invoiceInspectorFeeInvoice": "أتعاب المعاين (التنسيق والمتابعة)",
   "invoicePlatformFeeInvoice": "رسوم منصة معاين (التوثيق والتتبع)",
   "invoiceTotalLabel": "الإجمالي الشامل:",
   "invoiceApprove": "الموافقة على العرض وتأكيد الطلب",
 
-  "createHeaderTitle": "طلب فحص جديد",
-  "createHeaderSubtitle": "المرحلة 1: تقديم البيانات وتلقي عروض المعاينين",
-  "createCardVehicle": "🚘 بيانات السيارة المطلوب فحصها",
-  "createFieldCarModel": "نوع وموديل السيارة:",
-  "createHintCarModel": "مثال: تويوتا أف جى 2023",
-  "createFieldCity": "المدينة المتواجد بها:",
-  "createFieldPlate": "رقم اللوحة (اختياري):",
-  "createHintPlate": "3366 ج ن س",
-  "createFieldListing": "رابط إعلان السيارة (اختياري):",
-  "createHintListing": "https://haraj.com.sa/...",
-  "createCardSeller": "👤 بيانات البائع للتنسيق الفوري",
-  "createFieldSellerName": "اسم البائع / مالك السيارة:",
-  "createHintSellerName": "مثال: أبو فهد",
-  "createFieldSellerPhone": "رقم جوال البائع:",
-  "createHintSellerPhone": "05xxxxxxxx",
-  "createCardNotes": "📝 ملاحظات إضافية للمعاين (اختياري)",
-  "createFieldNotes": "ملاحظات أو أجزاء ترغب بالتركيز عليها:",
-  "createHintNotes": "مثال: يرجى التأكد من رش الصدام الأمامي أو فحص التكييف...",
-  "createCostCardTitle": "🔒 هيكلة التكلفة والشفافية (بدون دفع مقدماً)",
 
   "marketTitle": "سوق الطلبات المتاحة",
   "marketSubtitle": "اختر الطلب لبدء مهلة التنسيق (48 ساعة)",
-  "marketListTitle": "الطلبات المعروضة حالياً",
   "marketLive": "🔴 تحديث مباشر",
   "marketFeeLabel": "أتعاب المعاين",
   "marketBuyer": "طالب الفحص: {name}",
@@ -356,29 +261,17 @@
       "city": { "type": "String" }
     }
   },
-  "contactSellerLabel": "البائع (مالك السيارة):",
-  "contactRequesterLabel": "الشاري (طالب الفحص):",
-  "contactPhone": "📞 اتصال",
-  "contactWhatsapp": "واتساب",
-  "contactAwaitingBooking": "✅ في انتظار حجزك",
   "centreBoxTitle": "🏬 اختيار مركز الفحص المعتمد وتحديد الموعد",
-  "centreSelectLabel": "اختر مركز الفحص بـ{city}:",
+  "centreSelectLabel": "اختر مركز الفحص {city}:",
   "@centreSelectLabel": {
     "placeholders": {
       "city": { "type": "String" }
     }
   },
   "centreDayTimeLabel": "اليوم والوقت المتفق عليه مع البائع:",
-  "centreDayPrefix": "اليوم:",
   "centreConfirm": "تأكيد الحجز وإرسال تفاصيل الموعد والمركز",
   "centreConfirmNotify": "🔔 للشاري",
   "inspectorNewBoardTitle": "الطلبات الجديدة المعروضة بمدينتك",
-  "inspectorMiniNeighbourhood": "الحي: {area} 📍",
-  "@inspectorMiniNeighbourhood": {
-    "placeholders": {
-      "area": { "type": "String" }
-    }
-  },
   "inspectorMiniFee": "أتعاب المعاين: +{amount}",
   "@inspectorMiniFee": {
     "placeholders": {
@@ -393,17 +286,252 @@
       "count": { "type": "int" }
     }
   },
-  "timeHoursAgo": "منذ {count, plural, =1 {ساعة} =2 {ساعتان} few {ساعات} other {ساعة}}",
-  "@timeHoursAgo": {
+
+  "buyerActiveHeading": "متابعة الطلب النشط طلب {reference}",
+  "@buyerActiveHeading": {
     "placeholders": {
-      "count": { "type": "int" }
+      "reference": { "type": "String" }
     }
   },
-  "timeDaysAgo": "منذ {count, plural, =1 {يوم} =2 {يومان} few {أيام} other {يوم}}",
-  "@timeDaysAgo": {
+  "buyerPillAwaiting": "⏳ بانتظار المعاين",
+  "buyerPillReportReady": "📄 التقرير جاهز",
+  "buyerNoInspector": "لم يُعيَّن معاين بعد",
+  "buyerCancelledBody": "ألغيت هذا الطلب. قدّم طلباً جديداً وسيتولاه معاين في المدينة.",
+
+  "reportsTitle": "التقارير",
+  "reportsEmpty": "لا توجد تقارير بعد",
+  "reportsEmptyBody": "يصدر التقرير بعد اعتماد نتائج الفحص من المعاين.",
+  "accountTitle": "الحساب",
+  "inspectionsEmpty": "لا توجد فحوصات جارية",
+  "inspectionsEmptyBody": "اقبل طلباً من المهام ليظهر هنا.",
+  "walletTotalEarnings": "إجمالي الأرباح",
+  "walletCompletedJobs": "فحوصات مكتملة",
+  "walletActiveJobs": "فحوصات جارية",
+  "walletEmpty": "لا توجد أرباح مسجلة بعد",
+  "walletEmptyBody": "تُضاف الأتعاب إلى المحفظة بعد اعتماد التقرير.",
+  "tabLoadError": "تعذّر تحميل البيانات. حاول مرة أخرى.",
+
+  "marketViewAll": "عرض الكل",
+  "marketLocation": "📍 {city}",
+  "@marketLocation": {
     "placeholders": {
-      "count": { "type": "int" }
+      "city": { "type": "String" }
     }
   },
-  "timeJustNow": "منذ لحظات"
+  "marketEmptyTitle": "لا توجد طلبات معروضة حالياً",
+  "marketEmptyBody": "تظهر طلبات الفحص الجديدة في {city} هنا.",
+  "@marketEmptyBody": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+
+  "inspectorLive": "🔴 مباشر",
+
+  "reportEntryTitle": "إدخال نتائج الفحص الشامل",
+  "reportEntrySubtitle": "مركبة: {vehicle} | {centre}",
+  "@reportEntrySubtitle": {
+    "placeholders": {
+      "vehicle": { "type": "String" },
+      "centre": { "type": "String" }
+    }
+  },
+  "reportLineTag": "خط الفحص {number}",
+  "@reportLineTag": {
+    "placeholders": {
+      "number": { "type": "String" }
+    }
+  },
+  "reportObdTitle": "💻 فحص كمبيوتر الأعطال (OBD-II)",
+  "reportObdClean": "✓ لا توجد أكواد أعطال",
+  "reportObdNotesLabel": "أكواد الأعطال / ملاحظات الفحص المكتشفة:",
+  "reportBodyTitle": "🚗 فحص البودي والهيكل (المركب بالرفاع)",
+  "reportMoneyTitle": "💰 التقدير المالي للإصلاحات التقديرية",
+  "reportPhotosTitle": "📷 صور الفحص الميداني والتوثيق",
+  "reportPhotoSlot": "📸 صورة {number}",
+  "@reportPhotoSlot": {
+    "placeholders": {
+      "number": { "type": "int" }
+    }
+  },
+  "reportPhotoAdd": "+ إضافة",
+  "reportLoadError": "تعذّر تحميل بيانات الفحص. حاول مرة أخرى.",
+  "reportNotReady": "لا يمكن إدخال النتائج قبل بدء الفحص.",
+  "reportEngineExcellent": "ممتاز (95%)",
+  "reportGradeExcellent": "ممتاز",
+  "reportGradeSound": "سليم",
+  "reportGradeAcceptable": "مقبول",
+  "reportGradeNeedsRepair": "يحتاج إصلاح",
+
+  "reportVerifiedTop": "🔒 وثيقة فحص معتمدة إلكترونياً | مطابقة لمعايير التقييم الميداني",
+  "reportNumberLabel": "رقم التقرير: {reference}",
+  "@reportNumberLabel": {
+    "placeholders": {
+      "reference": { "type": "String" }
+    }
+  },
+  "reportDateLabel": "التاريخ: {date}",
+  "@reportDateLabel": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "reportVerdictBody": "أكدت المعاينة الميدانية سلامة المكونات الأساسية (المحرك، القير، الشاصي). توجد ملاحظات تجميلية واستهلاكية بسيطة تم توثيقها بالتقرير لتوفير شفافية كاملة للمشتري.",
+  "reportVerdictHeadline": "النتيجة العامة: {grade}",
+  "@reportVerdictHeadline": {
+    "placeholders": {
+      "grade": { "type": "String" }
+    }
+  },
+  "reportNoInvoice": "غير مسجلة",
+  "reportQualityCaption": "مؤشر الجودة",
+  "reportVehicleSection": "بيانات المركبة والطلب",
+  "reportTileVehicle": "المركبة",
+  "reportTilePlate": "رقم اللوحة",
+  "reportTileVin": "رقم الهيكل (VIN)",
+  "reportTileOdometer": "قراءة العداد",
+  "reportTileCity": "مدينة الفحص",
+  "reportTileCentre": "المركز المعتمد",
+  "reportTileInspector": "المعاين الميداني",
+  "reportTileInvoice": "فاتورة المركز",
+  "reportBlueprintSection": "خريطة الفحص البصرية للهيكل (Car Blueprint)",
+  "reportEfficiencySection": "كفاءة القطاعات الفنية والأجهزة",
+  "reportTableSector": "القطاع الفني",
+  "reportTableEfficiency": "نسبة الكفاءة",
+  "reportTableNotes": "ملاحظات المعاين الميدانية",
+  "reportAttachmentsSection": "المرفقات والصور الميدانية الموثقة",
+  "reportAttachmentCorners": "📷\nصورة زوايا السيارة",
+  "reportAttachmentOdometer": "📷\nصورة العداد والعداد",
+  "reportAttachmentEngine": "📷\nصورة المحرك بأسفل السيارة",
+  "reportAttachmentInvoice": "🧾\nالفاتورة الرسمية",
+  "reportDisclaimerLabel": "إخلاء مسؤولية رسمي:",
+  "reportDisclaimerBody": "تم إصدار التقرير بناء على الفحص الميداني والمستندات المرفقة فاتورة رقم {invoice} من المركز المعتمد. منصة \"معاين\" تقدم خدمات التوثيق الرقمي والوساطة اللوجستية وتخلي مسؤوليتها عن أي عيوب تطرأ على المركبة بعد تسليم التقرير.",
+  "@reportDisclaimerBody": {
+    "placeholders": {
+      "invoice": { "type": "String" }
+    }
+  },
+  "reportOdometerValue": "{km} كم",
+  "@reportOdometerValue": {
+    "placeholders": {
+      "km": { "type": "String" }
+    }
+  },
+
+
+  "stepCoordinationPending": "بانتظار اختيار المعاين لمركز الفحص",
+  "stepAppointmentPending": "يُحدد بعد اختيار المعاين والموافقة",
+  "invoiceApproved": "✅ تم اعتمادك للعرض والموافقة على الفاتورة",
+  "reportCertified": "معتمد",
+
+
+  "createStage1": "المرحلة 1: تقديم البيانات وتلقي عروض المعاينين",
+  "cardCarTitle": "🚘 بيانات السيارة المطلوب فحصها",
+  "createCarTypeLabel": "نوع وموديل السيارة:",
+  "createCarTypeHint": "مثال: تويوتا أف جى",
+  "createCarModelLabel": "الموديل:",
+  "createCarModelHint": "مثال: أف جي",
+  "createCarYearLabel": "سنة الصنع:",
+  "createCarYearHint": "مثال: 2023",
+  "createCityLabel": "المدينة المتواجد بها:",
+  "createPlateLabel": "رقم اللوحة (اختياري):",
+  "createPlateHint": "3366 ج ن س",
+  "createListingLabel": "رابط إعلان السيارة (اختياري):",
+  "createListingHint": "https://haraj.com.sa/...",
+  "cardSellerTitle": "👤 بيانات البائع للتنسيق الفوري",
+  "createSellerNameLabel": "اسم البائع / مالك السيارة:",
+  "createSellerNameHint": "مثال: أبو فهد",
+  "createSellerPhoneLabel": "رقم جوال البائع:",
+  "createSellerPhoneHint": "05xxxxxxxx",
+  "cardNotesTitle": "📝 ملاحظات إضافية للمعاين (اختياري)",
+  "createNotesLabel": "ملاحظات أو أجزاء ترغب بالتركيز عليها:",
+  "createNotesHint": "مثال: يرجى التأكد من رش الصدام الأمامي أو فحص التكييف...",
+  "createCostTitle": "🔒 هيكلة التكلفة والشفافية (بدون دفع مقدماً)",
+  "createCostCentre": "رسوم فحص المركز المعتمد",
+  "createCostTotalLabel": "الإجمالي التقديري الحالي:",
+  "createCostTotalValue": "{amount} + رسوم المركز",
+  "@createCostTotalValue": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+  "createBack": "رجوع",
+
+  "marketBoardTitle": "الطلبات المعروضة حالياً",
+  "marketOwner": "👤 المالك: {name}",
+  "@marketOwner": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+
+  "inspectorTaskAwaitingBooking": "✅ في انتظار حجزك",
+  "inspectorTaskSellerLabel": "البائع (مالك السيارة):",
+  "inspectorTaskPhoneLabel": "({phone})",
+  "@inspectorTaskPhoneLabel": {
+    "placeholders": {
+      "phone": { "type": "String" }
+    }
+  },
+  "inspectorTaskRequesterLabel": "الشاري (طالب الفحص):",
+  "inspectorCallSeller": "📞 اتصال",
+  "inspectorWhatsappSeller": "واتساب",
+  "centreDayValue": "اليوم: {day}",
+  "@centreDayValue": {
+    "placeholders": {
+      "day": { "type": "String" }
+    }
+  },
+  "centreEmpty": "لا يوجد مركز معتمد في هذه المدينة",
+
+  "accountRoleLabel": "نوع الحساب:",
+  "accountCityLabel": "المدينة:",
+  "accountRating": "التقييم",
+  "accountPhoneLabel": "رقم الجوال:",
+
+  "centreBookedValue": "{name} المعتمد ({city})",
+  "@centreBookedValue": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "city": { "type": "String" }
+    }
+  },
+
+  "inspectorNoCurrentTask": "لا توجد مهمة حالية",
+  "inspectorNoCurrentTaskBody": "لا يوجد طلب قبلتَه يحتاج حجز مركز وموعد. افتح السوق لتقبل طلباً جديداً.",
+
+  "inspectorBookedConfirmed": "✅ تم تأكيد الموعد والمركز مع البائع",
+
+  "marketOwnerUnknown": "غير محدد",
+  "fieldSellerName": "اسم البائع",
+
+  "reportEntryRequest": "طلب #{reference}",
+  "@reportEntryRequest": {
+    "placeholders": {
+      "reference": { "type": "String" }
+    }
+  },
+  "reportObdLabel": "حالة كمبيوتر المحرك والقير:",
+  "reportObdCodes": "⚠️ أعطال مسجلة (DTC)",
+  "reportBodyLabel": "حالة الشاصي والهيكل الخارجي:",
+  "reportBodySound": "سليم (وكالة)",
+  "reportBodyRepaint": "رش تجميلي",
+  "reportBodyModified": "تعديل / معجون",
+  "reportFenderRightLabel": "الرفرف الأمامي (يمين):",
+  "reportFenderLeftLabel": "الرفرف الأمامي (يسار):",
+  "reportMechanicsTitle": "⚙️ الميكانيكا وتجربة القيادة",
+  "reportEngineLabel": "حالة المحرك:",
+  "reportGearboxLabel": "ناقل الحركة (القير):",
+  "reportGearboxSmooth": "سليم وناعم",
+  "reportAcLabel": "التكييف والعضلات السفلية:",
+  "reportRepairLabel": "تكلفة الإصلاحات المتوقعة:",
+  "reportConditionLabel": "تقييم حالة المركبة:",
+  "reportIssueButton": "📄 اعتماد وإصدار التقرير النهائي A4",
+  "reportDigitalNoteBold": "التوثيق الرقمي:",
+  "reportDigitalNoteRest": " بضغطك على إصدار التقرير، تُقر بصحة نتائج الفحص الصادرة من المركز الفني وتوثيقها باسمك عبر نفاذ.",
+  "reportEngineGood": "جيد (85%)",
+  "reportGearboxRough": "فيه ملاحظات",
+  "reportEntryUnavailable": "هذا الطلب لا يمكن الوصول إليه، أو لم يعد متاحاً.",
+  "reportRepairHint": "800 ر.س",
+  "reportConditionExcellent": "ممتازة"
 }

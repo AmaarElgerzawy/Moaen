@@ -2,8 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/auth_controller.dart';
 import '../../auth/user_profile.dart';
+import '../data/centre_repository.dart';
 import '../data/inspection_repository.dart';
+import '../data/report_repository.dart';
+import '../domain/inspection_centre.dart';
 import '../domain/inspection_draft.dart';
+import '../domain/inspection_report.dart';
 import '../domain/inspection_request.dart';
 
 final inspectionRepositoryProvider = Provider<InspectionRepository>(
@@ -72,25 +76,14 @@ final inspectorJobProvider =
       return ref.watch(inspectionRepositoryProvider).byId(id);
     });
 
-/// The id the repository writes under.
+/// The signed-in user's display name, for the copy frozen onto a request.
 ///
-/// Awaits the auth provider's *future* rather than reading `.value`, and that
-/// distinction is load-bearing. `authControllerProvider` is an `AsyncNotifier`,
-/// so on the very first read — which is exactly when a write happens, because
-/// nothing has watched it yet — it is `AsyncLoading` and `.value` is null even
-/// though a session exists and resolves a frame later. Reading `.value` here
-/// threw a `StateError` on every first write; awaiting the future waits for the
-/// session to resolve.
-///
-/// Throws if there genuinely is no session: a request with a null `client_id`
-/// would be rejected by the schema with an error about a column rather than
-/// about the session, which is no help to anyone.
-Future<String> _clientId(Ref ref) async {
-  final UserProfile? profile = await ref.read(authControllerProvider.future);
-  if (profile == null) {
-    throw StateError('inspection write attempted with no signed-in user');
-  }
-  return profile.id;
+/// Returns null rather than a placeholder. A missing name is not a reason to write
+/// "عميل" onto a record an inspector reads before travelling to a car, and the
+/// column is nullable precisely so that "not recorded" is expressible.
+String? _displayName(UserProfile? profile) {
+  final String name = profile?.fullName.trim() ?? '';
+  return name.isEmpty ? null : name;
 }
 
 /// Writes: create and cancel.
@@ -115,9 +108,21 @@ class InspectionRequestController extends Notifier<AsyncValue<void>> {
   Future<InspectionRequest> create(InspectionDraft draft) async {
     state = const AsyncLoading();
     try {
+      // The buyer's name is read from the profile here rather than taken from the
+      // draft, so the form cannot be made to file a request under someone else's
+      // name. The draft keeps a `clientName` field for tests and for the rare
+      // caller that already has the profile, but a form is not where that
+      // decision should be trusted from.
+      final UserProfile? profile = await ref.read(authControllerProvider.future);
+      if (profile == null) {
+        throw StateError('inspection write attempted with no signed-in user');
+      }
       final InspectionRequest created = await ref
           .read(inspectionRepositoryProvider)
-          .create(draft, await _clientId(ref));
+          .create(
+            draft.copyWith(clientName: _displayName(profile) ?? draft.clientName),
+            profile.id,
+          );
       state = const AsyncData(null);
       ref.invalidate(myRequestsProvider);
       ref.invalidate(dashboardRequestProvider);
@@ -171,13 +176,34 @@ class InspectionRequestController extends Notifier<AsyncValue<void>> {
     }
   }
 
-  /// Claims a pending request. Invalidates the shared indexes plus this one
-  /// row, so the board drops it and the jobs list picks it up.
-  Future<void> accept(String id) {
-    return _transition(
-      () => ref.read(inspectionRepositoryProvider).accept(id),
-      id,
-    );
+  /// Claims a pending request.
+  ///
+  /// Not a [_transition] call, because the claim is the one inspector write that
+  /// has to carry something the database cannot derive: the inspector's own name,
+  /// frozen so the A4 report can name them later. `public.users` RLS gives a buyer
+  /// read access to their own row only, so the report the buyer is handed is
+  /// exactly the document that cannot look the name up — see
+  /// `InspectionRequest.inspectorName`.
+  ///
+  /// The profile is read here rather than in the repository, matching [create]: a
+  /// form is not where that decision should be trusted from, and the trigger in
+  /// migration 0009 is the authority on which writes are legal anyway.
+  ///
+  /// Invalidates the shared indexes plus this one row, so the board drops it and
+  /// the jobs list picks it up.
+  Future<void> accept(String id) async {
+    state = const AsyncLoading();
+    try {
+      final String? name = _displayName(await ref.read(authControllerProvider.future));
+      await ref.read(inspectionRepositoryProvider).accept(id, inspectorName: name);
+      state = const AsyncData(null);
+      ref.invalidate(jobBoardProvider);
+      ref.invalidate(myJobsProvider);
+      ref.invalidate(inspectorJobProvider(id));
+    } on Object catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
   }
 
   Future<void> start(String id) {
@@ -193,9 +219,165 @@ class InspectionRequestController extends Notifier<AsyncValue<void>> {
       id,
     );
   }
+
+  /// Books the centre and appointment for an accepted job.
+  ///
+  /// Not a `_transition` because it changes no status, and it invalidates a
+  /// different set: the buyer's dashboard and their request list both gain a
+  /// centre name, a fee and a time from this write, so those are the rows that
+  /// must refetch. Invalidating the inspector's own indexes too would be harmless
+  /// but would make the booking form re-read a list the inspector is looking at.
+  Future<void> book(
+    String id, {
+    required String centreName,
+    required double fee,
+    required DateTime appointmentAt,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      await ref
+          .read(inspectionRepositoryProvider)
+          .book(id, centreName: centreName, fee: fee, appointmentAt: appointmentAt);
+      state = const AsyncData(null);
+      ref.invalidate(myRequestsProvider);
+      ref.invalidate(dashboardRequestProvider);
+      ref.invalidate(inspectorJobProvider(id));
+    } on Object catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Records the buyer's approval of the invoice.
+  ///
+  /// The write the design's `الموافقة على العرض وتأكيد الطلب` button makes, and
+  /// the one the buyer's dashboard has the most interest in showing the result of:
+  /// [dashboardRequestProvider] is invalidated so the button's success state and
+  /// the step timeline both reflect it on the next frame.
+  Future<void> approveInvoice(String id) async {
+    state = const AsyncLoading();
+    try {
+      await ref.read(inspectionRepositoryProvider).approveInvoice(id);
+      state = const AsyncData(null);
+      ref.invalidate(dashboardRequestProvider);
+      ref.invalidate(myRequestsProvider);
+      ref.invalidate(inspectorJobProvider(id));
+    } on Object catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
 }
 
 final inspectionRequestControllerProvider =
     NotifierProvider<InspectionRequestController, AsyncValue<void>>(
       InspectionRequestController.new,
     );
+
+// ---------------------------------------------------------------------------
+// Centres
+// ---------------------------------------------------------------------------
+
+final centreRepositoryProvider = Provider<CentreRepository>(
+  (Ref ref) => CentreRepository(ref.watch(supabaseClientProvider)),
+);
+
+/// The approved centres in one city, for the booking dropdown.
+///
+/// Takes the city rather than reading the profile itself, because the caller is
+/// the screen that already has the request and its city — and a centre is booked
+/// inside the request's city, not the inspector's. A keying rule can only be
+/// written one way, and this way makes the mismatch visible in the call.
+final centresInCityProvider = FutureProvider.family<List<InspectionCentre>, String>(
+  (Ref ref, String city) {
+    ref.watch(authControllerProvider);
+    return ref.watch(centreRepositoryProvider).listForCity(city);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Reports
+// ---------------------------------------------------------------------------
+
+final reportRepositoryProvider = Provider<ReportRepository>(
+  (Ref ref) => ReportRepository(
+    ref.watch(supabaseClientProvider),
+    ref.watch(inspectionRepositoryProvider),
+  ),
+);
+
+/// The full A4 report for one inspection, or null if none has been started.
+///
+/// A `FutureProvider.family` over [ReportRepository.load] rather than a cache hit
+/// off the jobs list, for the reason [inspectorJobProvider] is: the report is
+/// reached from the buyer's dashboard, the inspector's job detail and the reports
+/// tab, and a fetch-by-id means a certifying action invalidates one document
+/// rather than every list that happens to mention it.
+final reportBundleProvider = FutureProvider.family<ReportBundle?, String>((
+  Ref ref,
+  String inspectionId,
+) {
+  ref.watch(authControllerProvider);
+  return ref.watch(reportRepositoryProvider).load(inspectionId);
+});
+
+/// The buyer's issued reports, newest first.
+///
+/// Derived from [myRequestsProvider] rather than queried by user id, because
+/// `inspection_reports` has no `client_id` — see
+/// [ReportRepository.listForInspections]. Chaining off the request list also means
+/// the reports tab and the requests tab can never disagree about which requests
+/// exist.
+final myReportsProvider = FutureProvider<List<InspectionReport>>((Ref ref) async {
+  final List<InspectionRequest> requests =
+      await ref.watch(myRequestsProvider.future);
+  final List<InspectionReport> reports = await ref
+      .watch(reportRepositoryProvider)
+      .listForInspections(<String>[
+        for (final InspectionRequest request in requests) request.id,
+      ]);
+  return reports;
+});
+
+/// Writes the report: the header row, its sectors, its chips, and the issue.
+///
+/// One notifier for the four writes rather than four, because the design's issue
+/// button performs all of them in sequence and a form that could issue a document
+/// with its sectors missing is a document that is wrong. [issue] is the only
+/// public method, and it does the writes in order.
+class ReportController extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  /// Saves [draft], then certifies it.
+  ///
+  /// The order matters and is not reversed for speed: a report becomes citable at
+  /// the moment of `certify`, and the buyer's reports tab and the A4's seal both
+  /// key off that timestamp. Certifying first would publish a document whose
+  /// sectors and chips are still the previous draft's — or absent, on a first
+  /// issue.
+  ///
+  /// Throws on failure and records it in [state], like the request writes, so a
+  /// caller can either await the throw or read the state back.
+  Future<void> issue(ReportDraft draft) async {
+    state = const AsyncLoading();
+    try {
+      final ReportRepository repository = ref.read(reportRepositoryProvider);
+      final String reportId = await repository.upsert(draft);
+      await repository.replaceSections(reportId, draft.sections);
+      await repository.replaceParts(reportId, draft.parts);
+      await repository.certify(reportId);
+      state = const AsyncData(null);
+      ref.invalidate(reportBundleProvider(draft.inspectionId));
+      ref.invalidate(myReportsProvider);
+      ref.invalidate(inspectionRequestControllerProvider);
+    } on Object catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+}
+
+final reportControllerProvider = NotifierProvider<ReportController, AsyncValue<void>>(
+  ReportController.new,
+);

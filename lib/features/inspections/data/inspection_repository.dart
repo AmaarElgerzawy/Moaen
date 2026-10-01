@@ -118,6 +118,75 @@ class InspectionRepository {
     }
   }
 
+  // --- The design's booking and approval writes --------------------------------
+
+  /// Books the centre and the appointment an inspector agreed with the seller.
+  ///
+  /// Three columns in one write, and one write rather than three, because the
+  /// buyer's invoice reads all three together: [CostEstimate] cannot show a
+  /// centre's fee without a centre, and `hasBooking` requires both the name and
+  /// the time. A partial booking would put the dashboard into a state the design
+  /// has no drawing for — a named centre at no time, or a time at no price.
+  ///
+  /// [fee] is passed rather than looked up here. It was read from the same
+  /// `inspection_centres` row the name came from, in the same dropdown read, and
+  /// re-reading it at write time would let a centre's price change between the
+  /// two and put a figure on the buyer's invoice that the dropdown never showed
+  /// them. The buyer approves what the inspector saw.
+  Future<void> book(
+    String id, {
+    required String centreName,
+    required double fee,
+    required DateTime appointmentAt,
+  }) async {
+    try {
+      await _client
+          .from(_table)
+          .update(<String, dynamic>{
+            'inspection_center_name': centreName,
+            'center_fee': fee,
+            'appointment_at': appointmentAt.toUtc().toIso8601String(),
+          })
+          .eq('id', id)
+          .select()
+          .single();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('booking write failed', error, stackTrace, {
+        'id': id,
+      });
+      throw const InspectionFailure(
+        'Could not confirm the booking. Please try again.',
+      );
+    }
+  }
+
+  /// Records the buyer's approval of the invoice.
+  ///
+  /// The client cannot do this under migration 0002's policy, which allowed a
+  /// buyer to write only while `pending` — and approval necessarily happens after
+  /// an inspector has accepted. Migration 0009 widens that policy and adds the
+  /// trigger rule that stops the widening from also letting a buyer accept,
+  /// advance or complete their own request.
+  Future<void> approveInvoice(String id) async {
+    try {
+      await _client
+          .from(_table)
+          .update(<String, dynamic>{
+            'client_approved_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', id)
+          .select()
+          .single();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('invoice approval failed', error, stackTrace, {
+        'id': id,
+      });
+      throw const InspectionFailure(
+        'Could not record your approval. Please try again.',
+      );
+    }
+  }
+
   // --- Inspector side --------------------------------------------------------
 
   /// The inspector's job board: requests waiting to be claimed.
@@ -180,8 +249,20 @@ class InspectionRepository {
   /// `.select().single()` turns that silent no-op into a PGRST116 that the
   /// caller can read as "taken", instead of letting the app cheerfully report
   /// an acceptance the database refused.
-  Future<void> accept(String id) async {
-    await _transition(id, 'request accept failed', claim: true, status: 'accepted');
+  ///
+  /// [inspectorName] is written in the same statement as the claim, because
+  /// migration 0009's rule 3 rejects a buyer writing that column and the report
+  /// can only cite a name the app stored at the moment it was defensible to.
+  /// Null is allowed and skips the column: the claim still stands, and the
+  /// report then names nobody rather than naming the wrong person.
+  Future<void> accept(String id, {String? inspectorName}) async {
+    await _transition(
+      id,
+      'request accept failed',
+      claim: true,
+      status: 'accepted',
+      inspectorName: inspectorName,
+    );
   }
 
   /// Starts an accepted job: `accepted -> in_progress`.
@@ -205,11 +286,16 @@ class InspectionRepository {
     String logName, {
     required bool claim,
     required String status,
+    String? inspectorName,
   }) async {
+    final String? name = inspectorName?.trim();
     try {
       await _client
           .from(_table)
-          .update(<String, dynamic>{'status': status})
+          .update(<String, dynamic>{
+            'status': status,
+            if (name != null && name.isNotEmpty) 'inspector_name': name,
+          })
           .eq('id', id)
           .select()
           .single();

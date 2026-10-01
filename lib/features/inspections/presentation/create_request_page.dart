@@ -8,13 +8,29 @@ import '../../cities/presentation/city_picker.dart';
 import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
 import '../domain/inspection_draft.dart';
+import 'widgets/design_widgets.dart';
 
-/// The create-request form.
+/// Screen 2: the create-request form.
 ///
-/// A `Form` with an explicit `GlobalKey` rather than per-field `onChanged`
-/// validation, because the submit button has to know whether it may be pressed.
-/// Validating only on submit makes the button look broken when the user is not
-/// done; validating on every keystroke makes a half-typed year light up red.
+/// RTL, because the reference's `.sc` for this screen is an `.rtl` container:
+/// every label, field and card hugs the right edge, and the back square sits at
+/// the physical right of the header. [RtlRegion] wraps the whole screen so that
+/// is a property of the screen rather than of each row in it.
+///
+/// Two design facts this screen has to hold on to, because both are easy to lose
+/// in a rewrite:
+///
+///  * **There is no budget input.** The reference has three fixed fee lines and a
+///    total, and no field a buyer types a number into. The budget that used to
+///    live here has gone; [InspectionDraft.toRow] records the estimate instead.
+///  * **The total line is a suffix, not a prefix.** The reference writes
+///    `199 ر.س + رسوم المركز` — the figure, then the currency, then the words.
+///    [CostEstimate.formatPrefixed] would print it the other way round.
+///
+/// A `Form` with an explicit key rather than per-field `onChanged` validation,
+/// because the submit button has to know whether it may be pressed. Validating
+/// only on submit makes the button look broken when the buyer is not done;
+/// validating on every keystroke makes a half-typed year light up red.
 class CreateRequestPage extends ConsumerStatefulWidget {
   const CreateRequestPage({super.key});
 
@@ -28,29 +44,31 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
   final TextEditingController _make = TextEditingController();
   final TextEditingController _model = TextEditingController();
   final TextEditingController _year = TextEditingController();
-  final TextEditingController _phone = TextEditingController();
-  final TextEditingController _address = TextEditingController();
+  final TextEditingController _plate = TextEditingController();
+  final TextEditingController _listing = TextEditingController();
+  final TextEditingController _sellerName = TextEditingController();
+  final TextEditingController _sellerPhone = TextEditingController();
   final TextEditingController _notes = TextEditingController();
-  final TextEditingController _budget = TextEditingController();
 
-  /// The chosen canonical city — a value, not a controller, because it comes
-  /// from the [CityPicker] sheet rather than from a cursor. Null until the buyer
-  /// makes a choice, which is what the validator flags.
+  /// The chosen canonical city — a value, not a controller, because it comes from
+  /// the [CityPicker] sheet rather than from a cursor. Null until the buyer makes
+  /// a choice, which is what the validator flags.
   String? _city;
 
   @override
   void dispose() {
     // Every controller this state creates has to be disposed here. They are
-    // created once per State, not once per build, so the usual place to leak
-    // them is a StatefulWidget that gets rebuilt rather than recreated.
+    // created once per State, not once per build, so the usual place to leak them
+    // is a StatefulWidget that gets rebuilt rather than recreated.
     for (final TextEditingController c in <TextEditingController>[
       _make,
       _model,
       _year,
-      _phone,
-      _address,
+      _plate,
+      _listing,
+      _sellerName,
+      _sellerPhone,
       _notes,
-      _budget,
     ]) {
       c.dispose();
     }
@@ -61,28 +79,33 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
     carMake: _make.text,
     carModel: _model.text,
     carYear: _year.text,
-    sellerPhone: _phone.text,
-    sellerLocationAddress: _address.text,
+    plateNumber: _plate.text,
+    listingUrl: _listing.text,
+    sellerName: _sellerName.text,
+    sellerPhone: _sellerPhone.text,
     city: _city ?? '',
     clientNotes: _notes.text,
-    budget: _budget.text,
   );
 
-  /// The estimate the total is computed from.
+  /// The three fixed fees, before any inspector is involved.
   ///
-  /// Read from the selected city so the breakdown tracks the buyer's choice,
-  /// which is what makes the number feel like a quote rather than a static
-  /// caption.
+  /// Not read from the selected city: there is one price list, so varying the
+  /// numbers by city would imply a pricing model the schema does not have.
+  /// [CostEstimate.standard] is the single source, which is what keeps the figure
+  /// on this screen and the figure on the buyer's invoice from drifting.
   CostEstimate get _estimate => CostEstimate.standard;
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    // Re-validate the parsed values, because a string can pass its field's
-    // validator and still not parse. A year of "٢٠١٥" (Arabic-Indic digits) is
-    // the realistic case: it looks like a number and is not one to `int.parse`.
+    // The year's field validator has already rejected anything unparseable, and it
+    // reads this same getter, so reaching here with a null year would mean the two
+    // disagree — which is a bug in this build rather than a thing the buyer did.
+    // The check stays because the alternative is sending a request with no year in
+    // it, and a guard that is unreachable beats a database rejection the buyer
+    // cannot read.
     final InspectionDraft draft = _draft;
-    if (draft.year == null || draft.budgetAmount == null) return;
+    if (draft.year == null) return;
 
     try {
       final created = await ref
@@ -95,8 +118,8 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
       // The message comes from the exception that actually happened rather than
       // from re-reading the controller's state. Re-reading is unreliable: the
       // notifier can be rebuilt between the throw and the read, which resets the
-      // state to its initial value and turns every specific error into the
-      // generic one.
+      // state to its initial value and turns every specific error into the generic
+      // one.
       if (!mounted) return;
       _showError(failure.message);
     } on Object {
@@ -117,164 +140,61 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
     final AsyncValue<void> submitting = ref.watch(
       inspectionRequestControllerProvider,
     );
-    final CostEstimate estimate = _estimate;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.createTitle)),
-      body: Form(
-        key: _formKey,
-        // A form this long is always scrolled, so the keyboard and the submit
-        // button cannot both be usable without it.
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+      body: RtlRegion(
+        child: Column(
           children: <Widget>[
-            _SectionCard(
-              number: '01',
-              title: l10n.createSectionVehicle,
-              children: <Widget>[
-                _Field(
-                  controller: _make,
-                  label: l10n.fieldCarMake,
-                  textInputAction: TextInputAction.next,
-                  validator: (String? v) =>
-                      (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
-                ),
-                _Field(
-                  controller: _model,
-                  label: l10n.fieldCarModel,
-                  textInputAction: TextInputAction.next,
-                  validator: (String? v) =>
-                      (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
-                ),
-                _Field(
-                  controller: _year,
-                  label: l10n.fieldCarYear,
-                  // Digits only. A year is four numbers, and a keyboard offering
-                  // letters for it is a keyboard offering the wrong suggestion.
-                  keyboardType: TextInputType.number,
-                  inputFormatters: <TextInputFormatter>[
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(4),
+            _CreateHeader(
+              onBack: () => Navigator.of(context).maybePop(),
+            ),
+            Expanded(
+              child: Form(
+                key: _formKey,
+                // The canvas, not white: the reference's `.body` for this screen
+                // is the one that keeps the page colour, where screens 1, 3 and 4
+                // all switch it to white. The three white screens have cards to
+                // sit on; this one is a stack of grey fields.
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.inset),
+                  children: <Widget>[
+                    _CarCard(
+                      make: _make,
+                      model: _model,
+                      year: _year,
+                      plate: _plate,
+                      listing: _listing,
+                      city: _city ?? '',
+                      onCity: (String value) =>
+                          setState(() => _city = value),
+                      // A reader, not a draft: the page re-reads its own draft
+                      // inside the validator, and typing does not rebuild the
+                      // page, so a draft captured here would be the one from
+                      // before the buyer touched the keyboard.
+                      parsedYear: () => _draft.year,
+                    ),
+                    _SellerCard(
+                      name: _sellerName,
+                      phone: _sellerPhone,
+                    ),
+                    _NotesCard(notes: _notes),
+                    _CostBox(estimate: _estimate),
+                    const SizedBox(height: AppSpacing.lg),
+                    FilledButton(
+                      // Disabled while in flight, so a slow network cannot produce
+                      // two requests from one tap.
+                      onPressed: submitting.isLoading ? null : _submit,
+                      child: submitting.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(l10n.createSubmit),
+                    ),
                   ],
-                  maxLength: 4,
-                  textInputAction: TextInputAction.next,
-                  validator: (String? v) {
-                    final String input = (v ?? '').trim();
-                    if (input.isEmpty) return l10n.errorRequired;
-                    if (_draft.year == null) return l10n.errorInvalidYear;
-                    return null;
-                  },
                 ),
-              ],
-            ),
-            _SectionCard(
-              number: '02',
-              title: l10n.createSectionSeller,
-              children: <Widget>[
-                _Field(
-                  controller: _phone,
-                  label: l10n.fieldSellerPhone,
-                  // Not `TextInputType.phone`: that keyboard has no `+`, and an
-                  // international number almost always needs one.
-                  keyboardType: TextInputType.text,
-                  inputFormatters: <TextInputFormatter>[
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
-                    LengthLimitingTextInputFormatter(20),
-                  ],
-                  textInputAction: TextInputAction.next,
-                  validator: (String? v) {
-                    final String input = (v ?? '').trim();
-                    if (input.isEmpty) return l10n.errorRequired;
-                    // The schema requires 5..30 characters. The lower bound is the
-                    // only one enforced here; an over-long value is the length
-                    // formatter's job.
-                    if (input.length < 5) return l10n.errorInvalidPhone;
-                    return null;
-                  },
-                ),
-                _Field(
-                  controller: _address,
-                  label: l10n.fieldSellerAddress,
-                  maxLines: 2,
-                  textInputAction: TextInputAction.next,
-                  validator: (String? v) =>
-                      (v ?? '').trim().length < 3 ? l10n.errorRequired : null,
-                ),
-                CityPicker(
-                  label: l10n.fieldCity,
-                  helperText: l10n.createCityHelper,
-                  // Store the choice here so the draft and the estimate below
-                  // follow it. The FormField's own state keeps the submitted
-                  // value for validation; the page needs the value in a field
-                  // it can read when the request is sent.
-                  onChanged: (String city) =>
-                      setState(() => _city = city),
-                  validator: (String? v) =>
-                      (v ?? '').trim().length < 2 ? l10n.errorRequired : null,
-                ),
-              ],
-            ),
-            _SectionCard(
-              number: '03',
-              title: l10n.createSectionNotes,
-              children: <Widget>[
-                _Field(
-                  controller: _notes,
-                  label: l10n.createNotesHint,
-                  hintText: l10n.createSectionNotes,
-                  helperText: l10n.createNotesOptional,
-                  // Multiline, so `next` would move to the next line rather than
-                  // the next field.
-                  maxLines: 4,
-                  // The column is capped at 1000 characters in the database.
-                  // Counted as you type rather than rejected on submit, so a
-                  // buyer who has written 1200 characters finds out while they
-                  // can still cut something.
-                  maxLength: 1000,
-                  textInputAction: TextInputAction.newline,
-                ),
-              ],
-            ),
-            _SectionCard(
-              number: '04',
-              title: l10n.costTitle,
-              children: <Widget>[
-                _Field(
-                  controller: _budget,
-                  label: l10n.fieldBudget,
-                  helperText: l10n.fieldBudgetHint,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: <TextInputFormatter>[
-                    // Digits and one decimal point. A second point is dropped by
-                    // the regex rather than producing a value that fails to parse.
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  onChanged: (_) => setState(() {}),
-                  textInputAction: TextInputAction.done,
-                  validator: (String? v) {
-                    final String input = (v ?? '').trim();
-                    if (input.isEmpty) return l10n.errorRequired;
-                    if (_draft.budgetAmount == null) return l10n.errorInvalidBudget;
-                    return null;
-                  },
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                _EstimatePreview(estimate: estimate, budget: _draft.budgetAmount),
-              ],
-            ),
-
-            const SizedBox(height: AppSpacing.xl),
-            FilledButton(
-              // Disabled while in flight, so a slow network cannot produce two
-              // requests from one tap.
-              onPressed: submitting.isLoading ? null : _submit,
-              child: submitting.isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(l10n.createSubmit),
+              ),
             ),
           ],
         ),
@@ -283,259 +203,444 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
   }
 }
 
-/// The running total, as the buyer types.
+/// The dark header: a back square, then the title and its stage line.
 ///
-/// The buyer's own budget is shown as the total once they enter one. Before
-/// that, the platform's estimate stands in. Mixing the two without saying which
-/// is which would be how a buyer ends up agreeing to a number they did not set.
-class _EstimatePreview extends StatelessWidget {
-  const _EstimatePreview({required this.estimate, required this.budget});
+/// The square carries the reference's own `→` glyph rather than Material's
+/// `arrow_back`. Under RTL a `→` drawn by the app's own font points at the
+/// right edge, which is where the design puts it, and `Icons.arrow_back` would be
+/// auto-mirrored by Flutter into a left-pointing arrow — the wrong direction for
+/// this screen. [LtrRegion] pins the glyph so the mirroring cannot happen.
+class _CreateHeader extends StatelessWidget {
+  const _CreateHeader({required this.onBack});
 
-  final CostEstimate estimate;
-  final double? budget;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ThemeData theme = Theme.of(context);
-    final bool usingBudget = budget != null;
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        // The light-green estimate surface is a design token rather than a tone
-        // from the scheme: the quoted total is deliberately the emerald brand
-        // colour, and the box is its lighter friend.
-        color: AppColors.successSurface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
+    return DarkHeader(
+      child: Row(
+        children: <Widget>[
+          Semantics(
+            button: true,
+            label: l10n.createBack,
+            child: InkWell(
+              onTap: onBack,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.darkSquare,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const LtrRegion(
+                  child: Text(
+                    '→',
+                    style: TextStyle(
+                      fontSize: 20,
+                      height: 1.2,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(l10n.createTitle, style: AppText.onDark(19)),
+                const SizedBox(height: 3),
+                Text(
+                  l10n.createStage1,
+                  style: AppText.secondary(12, color: AppColors.onDarkMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// `🚘 بيانات السيارة المطلوب فحصها` — the car, the city, the plate, the link.
+///
+/// The reference shows one full-width field for the car, then a `.two` of city
+/// (flex 1.3) and plate, then a full-width URL field. This keeps that layout and
+/// splits the car across three fields inside the first one — see
+/// [CarFields] for why the schema's three columns win over the reference's single
+/// `نوع وموديل السيارة`.
+class _CarCard extends StatelessWidget {
+  const _CarCard({
+    required this.make,
+    required this.model,
+    required this.year,
+    required this.plate,
+    required this.listing,
+    required this.city,
+    required this.onCity,
+    required this.parsedYear,
+  });
+
+  final TextEditingController make;
+  final TextEditingController model;
+  final TextEditingController year;
+  final TextEditingController plate;
+  final TextEditingController listing;
+  final String city;
+  final ValueChanged<String> onCity;
+
+  /// Read by the year's validator, which has to parse rather than pattern-match:
+  /// the field accepts Arabic-Indic digits that look like a number and are not one
+  /// to `int.parse`. A reader rather than a draft, so it cannot go stale while
+  /// the buyer is typing — see [CarFields.parsedYear].
+  final int? Function() parsedYear;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return TitledCard(
+      title: l10n.cardCarTitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // The design's two fixed lines. The centre's fee is not one of them: no
-          // centre has been chosen when a request is created, and showing a zero
-          // there would read as "the centre inspection is free" rather than "not
-          // known yet".
-          _Line(
-            label: l10n.invoiceInspectorFee,
-            value: CostEstimate.format(estimate.inspectorFee),
-          ),
-          _Line(
-            label: l10n.invoicePlatformFee,
-            value: CostEstimate.format(estimate.platformFee),
-          ),
-          _Line(
-            label: l10n.invoiceCentreFee,
-            value: l10n.invoiceCentrePending,
-            // The pending marker is the design's own orange warning treatment, and
-            // it is the only part of this box that is a warning — hence a smaller
-            // type size than the two settled figures.
-            dimmed: true,
-          ),
-          const Divider(height: AppSpacing.lg),
-          _Line(
-            label: l10n.costTotal,
-            // A buyer's own budget replaces the platform's floor figure rather than
-            // being added to it. It is a ceiling they set, not a fourth line on the
-            // invoice, and summing the two would produce a number nobody quoted.
-            value: CostEstimate.format(
-              usingBudget ? budget! : estimate.total,
-            ),
-            emphasise: true,
+          CarFields(
+            make: make,
+            model: model,
+            year: year,
+            parsedYear: parsedYear,
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            l10n.costEstimateNotice,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Line extends StatelessWidget {
-  const _Line({
-    required this.label,
-    required this.value,
-    this.emphasise = false,
-    this.dimmed = false,
-  });
-
-  final String label;
-  final String value;
-  final bool emphasise;
-
-  /// True for a figure that is not settled yet, which the design shows smaller
-  /// and warmer than the two that are.
-  final bool dimmed;
-
-  @override
-  Widget build(BuildContext context) {
-    final TextTheme text = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // Flexible because the design's labels are sentences, and a `Row` gives
-          // an unconstrained child the whole line — which overflows rather than
-          // wraps. Both sides flex, and the value gets the larger share because it
-          // is usually the shorter of the two; the pending marker is the case that
-          // needs the room, and it wraps rather than clipping.
-          Expanded(
-            flex: 2,
-            child: Text(label, style: emphasise ? text.titleSmall : text.bodySmall),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Flexible(
-            flex: 3,
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: emphasise
-                  ? text.titleSmall?.copyWith(fontWeight: FontWeight.w800)
-                  : dimmed
-                  ? text.bodySmall?.copyWith(
-                      color: AppColors.warning,
-                      fontSize: 11,
-                    )
-                  : text.bodySmall,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.number,
-    required this.title,
-    required this.children,
-  });
-
-  /// The step number, as a two-digit badge ("01"). A string, not an int, so the
-  /// leading zero is the designer's, decided once here.
-  final String number;
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // Each side is a Column because the reference's `.two` cells are a
+          // label above a field, and two labels at one height would need both
+          // fields to start at the same y — which they do not, because the city
+          // picker is a `FormField` with its own internal padding.
+          TwoUp(
             children: <Widget>[
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  _NumberBadge(number),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                  FieldLabel(l10n.createCityLabel),
+                  CityPicker(
+                    // The reference's `.fld v`, not the Material decorated field:
+                    // this is a designed screen, and a floating label over a grey
+                    // fill with a Material expand chevron is the app's old form
+                    // language showing up where the design has its own.
+                    design: true,
+                    label: l10n.createCityLabel,
+                    initialValue: city,
+                    onChanged: onCity,
+                    validator: (String? v) =>
+                        (v ?? '').trim().length < 2 ? l10n.errorRequired : null,
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.md),
-              ...children,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  FieldLabel(l10n.createPlateLabel),
+                  DesignTextField(
+                    controller: plate,
+                    hintText: l10n.createPlateHint,
+                    textInputAction: TextInputAction.next,
+                  ),
+                ],
+              ),
             ],
           ),
-        ),
+          const SizedBox(height: AppSpacing.lg),
+          FieldLabel(l10n.createListingLabel),
+          DesignTextField(
+            controller: listing,
+            hintText: l10n.createListingHint,
+            // The reference marks this field `.ltr`. A URL is a left-to-right
+            // string, and letting the bidi algorithm lay it out against an
+            // RTL paragraph puts the scheme at the wrong end.
+            ltr: true,
+            keyboardType: TextInputType.url,
+            textInputAction: TextInputAction.next,
+          ),
+        ],
       ),
     );
   }
 }
 
-/// The small emerald step badge on each section card.
-class _NumberBadge extends StatelessWidget {
-  const _NumberBadge(this.number);
-
-  final String number;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Container(
-      width: 28,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      child: Text(
-        number,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onPrimary,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _Field extends StatelessWidget {
-  const _Field({
-    required this.controller,
-    required this.label,
-    this.keyboardType,
-    this.inputFormatters,
-    this.validator,
-    this.textInputAction,
-    this.maxLines = 1,
-    this.maxLength,
-    this.onChanged,
-    this.hintText,
-    this.helperText,
+/// The three car fields, under the reference's single `نوع وموديل السيارة` label.
+///
+/// The reference has one field holding make, model and year together. The schema
+/// has three columns and the report tiles want them apart, and gluing three
+/// columns into one text field would mean parsing a sentence at query time. So the
+/// label is kept verbatim and the fields are split under it, with the reference's
+/// own example (`مثال: تويوتا أف جى 2023`) divided across the three hints rather
+/// than a new set of placeholder words invented for it.
+class CarFields extends StatelessWidget {
+  const CarFields({
+    required this.make,
+    required this.model,
+    required this.year,
+    required this.parsedYear,
+    super.key,
   });
 
-  final TextEditingController controller;
-  final String label;
-  final TextInputType? keyboardType;
-  final List<TextInputFormatter>? inputFormatters;
-  final String? Function(String?)? validator;
-  final TextInputAction? textInputAction;
-  final int maxLines;
-  final int? maxLength;
-  final ValueChanged<String>? onChanged;
-  final String? hintText;
-  final String? helperText;
+  final TextEditingController make;
+  final TextEditingController model;
+  final TextEditingController year;
+
+  /// Reads the year the way the draft will read it — parse, range check, null on
+  /// anything unparseable — so the validator reports the same verdict the submit
+  /// path acts on.
+  ///
+  /// A *function*, not the draft itself, and that is the whole point. Typing does
+  /// not rebuild this card: the controllers notify the fields they belong to, not
+  /// the page above them. A draft passed by value is therefore whatever the draft
+  /// said the last time the page did rebuild, which is before the buyer typed
+  /// anything — so a year of `1949` validated clean, and the submit then bailed on
+  /// its own re-check with nothing on screen to say why. A stale read is worse
+  /// than no validation, because the button still moves.
+  final int? Function() parsedYear;
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        FieldLabel(l10n.createCarTypeLabel),
+        DesignTextField(
+          controller: make,
+          hintText: l10n.createCarTypeHint,
+          textInputAction: TextInputAction.next,
+          validator: (String? v) =>
+              (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        FieldLabel(l10n.createCarModelLabel),
+        DesignTextField(
+          controller: model,
+          hintText: l10n.createCarModelHint,
+          textInputAction: TextInputAction.next,
+          validator: (String? v) =>
+              (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        FieldLabel(l10n.createCarYearLabel),
+        DesignTextField(
+          controller: year,
+          hintText: l10n.createCarYearHint,
+          // Digits only. A year is four numbers, and a keyboard offering letters
+          // for it is a keyboard offering the wrong suggestion.
+          keyboardType: TextInputType.number,
+          inputFormatters: <TextInputFormatter>[
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(4),
+          ],
+          textInputAction: TextInputAction.next,
+          validator: (String? v) {
+            final String input = (v ?? '').trim();
+            if (input.isEmpty) return l10n.errorRequired;
+            if (parsedYear() == null) return l10n.errorInvalidYear;
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// `👤 بيانات البائع للتنسيق الفوري` — the seller card.
+///
+/// The design has exactly two fields here, a name and a phone. It had three in an
+/// earlier draft of this app, one of which was the seller's address; the reference
+/// has no address field, and the city is what scopes the request, so the address
+/// field is gone and so is the column being written from it.
+class _SellerCard extends StatelessWidget {
+  const _SellerCard({required this.name, required this.phone});
+
+  final TextEditingController name;
+  final TextEditingController phone;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: TextFormField(
-        controller: controller,
-        keyboardType: keyboardType,
-        inputFormatters: inputFormatters,
-        validator: validator,
-        textInputAction: textInputAction,
-        maxLines: maxLines,
-        maxLength: maxLength,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hintText,
-          helperText: helperText,
-          border: const OutlineInputBorder(),
-          // Present on every field rather than only when invalid, so the field
-          // does not change height the moment it goes red and shove the rest of
-          // the form down while the user is looking at it.
-          helperMaxLines: 3,
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: TitledCard(
+        title: l10n.cardSellerTitle,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            FieldLabel(l10n.createSellerNameLabel),
+            DesignTextField(
+              controller: name,
+              hintText: l10n.createSellerNameHint,
+              textInputAction: TextInputAction.next,
+              validator: (String? v) =>
+                  (v ?? '').trim().isEmpty ? l10n.errorRequired : null,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            FieldLabel(l10n.createSellerPhoneLabel),
+            DesignTextField(
+              controller: phone,
+              hintText: l10n.createSellerPhoneHint,
+              // The reference marks this field `.ltr`: a phone number is
+              // left-to-right digits, and under RTL the leading `+` or `0` ends up
+              // at the far side of the field from where it was typed.
+              ltr: true,
+              // Not `TextInputType.phone`: that keyboard has no `+`, and a Saudi
+              // number that is dialled from abroad almost always needs one.
+              keyboardType: TextInputType.text,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
+              textInputAction: TextInputAction.next,
+              validator: (String? v) {
+                final String input = (v ?? '').trim();
+                if (input.isEmpty) return l10n.errorRequired;
+                // The schema requires 5..30 characters. The lower bound is the only
+                // one enforced here; an over-long value is the length formatter's
+                // job.
+                if (input.length < 5) return l10n.errorInvalidPhone;
+                return null;
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// `📝 ملاحظات إضافية للمعاين (اختياري)` — the notes card.
+///
+/// A taller field than the others, because the reference's `.ta` is 74dp and its
+/// hint is a full sentence the buyer is meant to be able to read before typing.
+class _NotesCard extends StatelessWidget {
+  const _NotesCard({required this.notes});
+
+  final TextEditingController notes;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: TitledCard(
+        title: l10n.cardNotesTitle,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            FieldLabel(l10n.createNotesLabel),
+            DesignTextField(
+              controller: notes,
+              hintText: l10n.createNotesHint,
+              // Multiline, so `next` would move to the next line rather than the
+              // next field.
+              maxLines: 3,
+              // The column is capped at 1000 characters in the database. Counted
+              // as the buyer types rather than rejected on submit, so someone who
+              // has written 1200 characters finds out while they can still cut
+              // something.
+              maxLength: 1000,
+              textInputAction: TextInputAction.newline,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// `🔒 هيكلة التكلفة والشفافية (بدون دفع مقدماً)` — the light-green cost box.
+///
+/// Not the buyer's [InvoiceBox] even though the two share three of their four
+/// lines. This one is light green and says "roughly this, and nothing is charged
+/// now"; the buyer's is an off-white document that names a centre and asks for
+/// agreement. Sharing one widget would make that difference a colour argument, and
+/// the two also differ in bullet and type size.
+///
+/// The reference's three lines, in its order: centre (pending), inspector,
+/// platform. The order is not alphabetical and not by size — the centre is first
+/// because it is the line the buyer does not know yet, and reading a cost
+/// breakdown top-down wants the unknown first.
+class _CostBox extends StatelessWidget {
+  const _CostBox({required this.estimate});
+
+  final CostEstimate estimate;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: CostBox(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              l10n.createCostTitle,
+              style: AppText.title(13, color: AppColors.greenDeep),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            CostLine(
+              label: l10n.createCostCentre,
+              value: l10n.invoiceCentrePending,
+              // The pending marker is the design's own orange warning treatment
+              // and it is the only part of this box that is a warning — hence a
+              // smaller type size than the two settled figures.
+              valueColor: AppColors.warning,
+              valueSize: 10,
+            ),
+            CostLine(
+              label: l10n.invoiceInspectorFee,
+              value: CostEstimate.format(estimate.inspectorFee),
+            ),
+            CostLine(
+              label: l10n.invoicePlatformFee,
+              value: CostEstimate.format(estimate.platformFee),
+            ),
+            const DashedDivider(color: AppColors.successBorder),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: <Widget>[
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    l10n.createCostTotalLabel,
+                    style: AppText.title(12, color: AppColors.greenDeep),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Flexible(
+                  flex: 3,
+                  child: Text(
+                    // `199 ر.س + رسوم المركز` — the reference puts the currency
+                    // after the figure and then names the part that is not
+                    // included. `CostEstimate.format` gives the first half;
+                    // `formatPrefixed` would print `ر.س 199` and lose the clause.
+                    l10n.createCostTotalValue(
+                      CostEstimate.format(estimate.total),
+                    ),
+                    textAlign: TextAlign.end,
+                    style: AppText.title(12, color: AppColors.green),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

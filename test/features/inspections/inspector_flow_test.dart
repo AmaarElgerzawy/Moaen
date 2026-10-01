@@ -8,7 +8,6 @@ import 'package:moaen/features/auth/auth_controller.dart';
 import 'package:moaen/features/auth/auth_repository.dart';
 import 'package:moaen/features/auth/user_profile.dart';
 import 'package:moaen/features/cities/application/city_controller.dart';
-import 'package:moaen/features/cities/presentation/city_picker.dart';
 import 'package:moaen/features/inspections/application/inspection_controller.dart';
 // Not transitive from the fake: Dart imports are per-library, so a test that
 // constructs an `InspectionFailure` has to name where it comes from.
@@ -16,14 +15,18 @@ import 'package:moaen/features/inspections/data/inspection_repository.dart';
 import 'package:moaen/features/inspections/domain/inspection_request.dart';
 import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
 import 'package:moaen/features/inspections/presentation/inspector_job_detail_page.dart';
+import 'package:moaen/features/inspections/presentation/inspector_market_page.dart';
+import 'package:moaen/features/inspections/presentation/report_entry_page.dart';
+import 'package:moaen/features/inspections/presentation/widgets/design_widgets.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
 
 import '../../support/fake_auth_repository.dart';
 import '../../support/fake_cities.dart';
 import '../../support/fake_inspection_repository.dart';
 
-/// Widget tests for the inspector side: the job board, the jobs list, the
-/// profile tab and the request detail with its three status actions.
+/// Widget tests for the inspector side: the market, the four tabs of the home
+/// shell, the wallet arithmetic and the request detail with its three status
+/// actions.
 ///
 /// Rendered in English deliberately, like the client flow tests: these assert
 /// behaviour — which action a status offers, what happens when it is taken.
@@ -95,9 +98,14 @@ Widget _app(
   ),
 );
 
-/// The home and the detail under one router, so tap-through navigation between
-/// them is exercised rather than stubbed.
-Widget _flowApp(FakeInspectionRepository repository) => ProviderScope(
+/// The market and the job detail under one router, so the tap-through between
+/// them is exercised rather than stubbed — the market's card pushes the detail
+/// page by name, and a test that mounted the two as separate trees would pass
+/// while the real route stayed wrong.
+Widget _flowApp(
+  FakeInspectionRepository repository, {
+  Widget start = const InspectorHomePage(),
+}) => ProviderScope(
   overrides: [
     inspectionRepositoryProvider.overrideWithValue(repository),
     authControllerProvider.overrideWith(_StubAuthController.new),
@@ -118,17 +126,67 @@ Widget _flowApp(FakeInspectionRepository repository) => ProviderScope(
     routerConfig: GoRouter(
       initialLocation: '/',
       routes: <RouteBase>[
-        GoRoute(path: '/', builder: (_, _) => const InspectorHomePage()),
+        GoRoute(path: '/', builder: (_, _) => start),
+        GoRoute(
+          path: '/inspector/market',
+          name: 'inspectorMarket',
+          builder: (_, _) => const InspectorMarketPage(),
+        ),
         GoRoute(
           path: '/inspector/jobs/:id',
-          name: 'inspectorJobDetail',
+          // The production name, not a test-only alias: the market pushes this
+          // by name, and a test router that renamed it would stop proving the
+          // name is right.
+          name: 'inspectorJob',
           builder: (_, GoRouterState state) =>
               InspectorJobDetailPage(id: state.pathParameters['id'] ?? ''),
+        ),
+        GoRoute(
+          path: '/requests/:id/report/entry',
+          name: 'reportEntry',
+          builder: (_, GoRouterState state) =>
+              ReportEntryPage(id: state.pathParameters['id'] ?? ''),
         ),
       ],
     ),
   ),
 );
+
+/// The bottom-nav item with [label].
+///
+/// Scoped to the bar, because a tab's own `ShellHeader` repeats the same word:
+/// `الفحوصات` is both the second nav destination and the title of the screen it
+/// opens, and a screen-wide finder would find two and report `findsOneWidget` as
+/// a failure — which reads as a bug in the shell rather than in the finder.
+Finder navItem(String label) => find.descendant(
+  of: find.byType(AppBottomNav),
+  matching: find.text(label),
+);
+
+/// Pops the current route the way the platform would.
+///
+/// Not [WidgetTester.pageBack], which looks for a back button widget and finds
+/// none: these pushed screens carry the design's own dark header rather than a
+/// Material `AppBar`, so the only way off them is the system gesture. Driving the
+/// system route pop is therefore closer to what a person does than tapping a
+/// button that this app does not have — and it means a test here cannot pass by
+/// finding a back affordance the design never drew.
+Future<void> _systemBack(WidgetTester tester) async {
+  await tester.binding.handlePopRoute();
+  await tester.pumpAndSettle();
+}
+
+/// The market's header pin, for a page whose localizations are [l10n].
+///
+/// The same string appears on every listing — `📍 {city} | طالب الفحص: …` — so
+/// the header is read by its position rather than by its text, and a test
+/// asserting "the market is scoped to this city" is asserting about the header
+/// specifically, not about every pin on the page.
+Finder marketHeaderCity(AppLocalizations l10n, String city) =>
+    find.descendant(
+      of: find.byType(DarkHeader),
+      matching: find.text(l10n.marketLocation(city)),
+    );
 
 /// Pumps [app] on a surface tall enough for the full detail page.
 ///
@@ -145,16 +203,249 @@ Future<void> _pump(WidgetTester tester, Widget app) async {
 }
 
 void main() {
-  group('InspectorHomePage · job board', () {
-    testWidgets('shows only requests still waiting to be claimed', (
+  group('InspectorMarketPage · the market', () {
+    testWidgets('lists only requests still waiting to be claimed', (
       WidgetTester tester,
     ) async {
       final FakeInspectionRepository repository = FakeInspectionRepository(
         requests: <InspectionRequest>[
-          buildRequest(id: 'avail-1', referenceNo: 1005),
-          buildRequest(id: 'avail-2', referenceNo: 1004),
+          buildRequest(
+            id: 'avail-1',
+            referenceNo: 1005,
+            make: 'Lexus',
+            model: 'ES350',
+            year: 2022,
+          ),
+          buildRequest(
+            id: 'avail-2',
+            referenceNo: 1004,
+            make: 'Nissan',
+            model: 'Patrol',
+            year: 2021,
+          ),
           buildRequest(
             id: 'mine-1',
+            referenceNo: 1003,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.accepted,
+          ),
+        ],
+      );
+      await _pump(
+        tester,
+        _app(repository, child: const InspectorMarketPage()),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      // The reference identifies a listing by the car, not by a reference number:
+      // an inspector choosing between jobs reads the make and the district, and
+      // `MN-1005` appears nowhere on this screen.
+      expect(find.text('Lexus ES350 (2022)'), findsOneWidget);
+      expect(find.text('Nissan Patrol (2021)'), findsOneWidget);
+      expect(
+        find.text('Toyota Corolla (2019)'),
+        findsNothing,
+        reason: 'a claimed request is not available to be claimed',
+      );
+      expect(find.text('MN-1005'), findsNothing);
+      // The fee is the same one price list the buyer's invoice quotes.
+      expect(find.text('+150'), findsNWidgets(2));
+      expect(find.text(l10n.marketFeeLabel), findsNWidgets(2));
+    });
+
+    testWidgets('an empty market says so and names the city', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        _app(FakeInspectionRepository(), child: const InspectorMarketPage()),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      expect(find.text(l10n.marketEmptyTitle), findsOneWidget);
+      expect(find.text(l10n.marketEmptyBody('Dammam')), findsOneWidget);
+    });
+
+    testWidgets('a failed market load is retryable', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[
+          buildRequest(
+            id: 'avail-1',
+            referenceNo: 1005,
+            make: 'Lexus',
+            model: 'ES350',
+          ),
+        ],
+        failure: const InspectionFailure('boom'),
+      );
+      await _pump(
+        tester,
+        _app(repository, child: const InspectorMarketPage()),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      expect(find.text(l10n.tabLoadError), findsOneWidget);
+      expect(find.text('Lexus ES350 (2019)'), findsNothing);
+
+      // `DesignRetry` outlines its action, not fills it: a retry is a fallback,
+      // not the screen's primary action, and filling it would outrank the thing
+      // the inspector came to do.
+      repository.failure = null;
+      await tester.tap(find.widgetWithText(OutlinedButton, l10n.actionRetry));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Lexus ES350 (2019)'), findsOneWidget);
+    });
+
+    testWidgets('accepting from the market takes the request', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[buildRequest(id: 'avail-1', referenceNo: 1005)],
+      );
+      await _pump(
+        tester,
+        _app(repository, child: const InspectorMarketPage()),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      // The market's own button, not the detail page's. It asks first, exactly as
+      // the detail page's does: two routes to the same commitment have to weigh
+      // the same, or an inspector learns the question by being surprised.
+      await tester.tap(find.widgetWithText(FilledButton, l10n.marketAccept));
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.acceptConfirmTitle), findsOneWidget);
+      await tester.tap(find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(FilledButton, l10n.actionAccept),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(repository.acceptedIds, <String>['avail-1']);
+      // The board query is scoped to unclaimed rows, so the listing is gone from
+      // under the inspector who just took it.
+      expect(find.text(l10n.marketEmptyTitle), findsOneWidget);
+    });
+
+    testWidgets('a confirmation declined on the market takes nothing', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[buildRequest(id: 'avail-1', referenceNo: 1005)],
+      );
+      await _pump(
+        tester,
+        _app(repository, child: const InspectorMarketPage()),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, l10n.marketAccept));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(TextButton, l10n.actionKeep),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repository.acceptedIds, isEmpty);
+      // Still listed, still available: a request nobody took has not gone away.
+      expect(find.text('Toyota Corolla (2019)'), findsOneWidget);
+    });
+  });
+
+  group('InspectorHomePage · the tasks tab', () {
+    testWidgets('the current task is the accepted job, not the finished one', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[
+          buildRequest(
+            id: 'mine-1',
+            referenceNo: 1003,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.inProgress,
+            make: 'Toyota',
+            model: 'FJ',
+            year: 2023,
+          ),
+          buildRequest(
+            id: 'mine-2',
+            referenceNo: 1002,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.accepted,
+            make: 'Lexus',
+            model: 'ES350',
+            year: 2022,
+          ),
+          buildRequest(
+            id: 'done-1',
+            referenceNo: 1001,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.completed,
+          ),
+        ],
+      );
+      await _pump(tester, _app(repository, child: const InspectorHomePage()));
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      // The card the reference draws is the one whose subject is a booking, so the
+      // accepted job wins over the one already under way. Asserting only that
+      // *some* live job is shown would pass against a picker that took the first
+      // row, which is the in-progress one here.
+      expect(find.text('Lexus ES350 (2022)'), findsOneWidget);
+      expect(find.text('Toyota FJ (2023)'), findsNothing);
+      expect(find.text(l10n.centreBoxTitle), findsOneWidget);
+    });
+
+    testWidgets('no current task points at the market', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        _app(FakeInspectionRepository(), child: const InspectorHomePage()),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      expect(find.text(l10n.inspectorNoCurrentTask), findsOneWidget);
+      expect(find.text(l10n.inspectorNoCurrentTaskBody), findsOneWidget);
+      expect(find.text(l10n.centreBoxTitle), findsNothing);
+      // The way to the market is on this screen; without it the empty state is a
+      // dead end. Read as a `Text` inside a `TextButton` — a bare text finder
+      // would also match the market's own accept label on a populated board.
+      expect(
+        find.descendant(
+          of: find.byType(TextButton),
+          matching: find.text(l10n.marketViewAll),
+        ),
+        findsOneWidget,
+        reason: 'the empty current-task state must offer the market',
+      );
+    });
+
+    testWidgets('the earnings row counts completed jobs at the fixed fee', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[
+          buildRequest(
+            id: 'done-1',
+            referenceNo: 1001,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.completed,
+          ),
+          buildRequest(
+            id: 'done-2',
+            referenceNo: 1002,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.completed,
+          ),
+          buildRequest(
+            id: 'live-1',
             referenceNo: 1003,
             inspectorId: 'inspector-1',
             status: InspectionStatus.accepted,
@@ -164,46 +455,23 @@ void main() {
       await _pump(tester, _app(repository, child: const InspectorHomePage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      expect(find.text('MN-1005'), findsOneWidget);
-      expect(find.text('MN-1004'), findsOneWidget);
-      expect(
-        find.text('MN-1003'),
-        findsNothing,
-        reason: 'a claimed request is not available to be claimed',
+      // Read inside the stats bar. The design uses the same word twice on this
+      // screen — the bar's middle column is `الفحوصات` and so is the second nav
+      // destination — so a screen-wide finder would find two and read as a
+      // failure in the shell. The collision is the reference's, not this build's.
+      Finder inStats(String text) => find.descendant(
+        of: find.byType(StatsBar),
+        matching: find.text(text),
       );
-      expect(find.text(l10n.boardTitle('Dammam')), findsOneWidget);
-    });
 
-    testWidgets('an empty board says so and names the city', (
-      WidgetTester tester,
-    ) async {
-      await _pump(tester, _app(FakeInspectionRepository(), child: const InspectorHomePage()));
-      final AppLocalizations l10n = _l10nOf(tester);
-
-      expect(find.text(l10n.boardEmptyTitle), findsOneWidget);
-      expect(find.text(l10n.boardEmptyBody('Dammam')), findsOneWidget);
-    });
-
-    testWidgets('a failed board load is retryable', (
-      WidgetTester tester,
-    ) async {
-      final FakeInspectionRepository repository = FakeInspectionRepository(
-        requests: <InspectionRequest>[
-          buildRequest(id: 'avail-1', referenceNo: 1005),
-        ],
-        failure: const InspectionFailure('Could not load the job board.'),
-      );
-      await _pump(tester, _app(repository, child: const InspectorHomePage()));
-      final AppLocalizations l10n = _l10nOf(tester);
-
-      expect(find.text(l10n.boardLoadError), findsOneWidget);
-      expect(find.text('MN-1005'), findsNothing);
-
-      repository.failure = null;
-      await tester.tap(find.widgetWithText(FilledButton, l10n.actionRetry));
-      await tester.pumpAndSettle();
-
-      expect(find.text('MN-1005'), findsOneWidget);
+      expect(inStats(l10n.statRequestFee), findsOneWidget);
+      expect(inStats(l10n.statInspections), findsOneWidget);
+      expect(inStats(l10n.statEarningsToday), findsOneWidget);
+      // 150 per completed job, two of them, and the in-progress one is not
+      // counted — earnings are for work that finished.
+      expect(inStats('ر.س 150'), findsOneWidget);
+      expect(inStats('2 inspections'), findsOneWidget);
+      expect(inStats('ر.س 300'), findsOneWidget);
     });
   });
 
@@ -231,13 +499,26 @@ void main() {
       WidgetTester tester,
     ) async {
       final FakeInspectionRepository repository = FakeInspectionRepository(
-        requests: <InspectionRequest>[buildRequest(id: 'avail-1', referenceNo: 1005)],
+        requests: <InspectionRequest>[
+          buildRequest(
+            id: 'avail-1',
+            referenceNo: 1005,
+            make: 'Lexus',
+            model: 'ES350',
+            year: 2022,
+          ),
+        ],
       );
-      await _pump(tester, _flowApp(repository));
+      await _pump(
+        tester,
+        _flowApp(repository, start: const InspectorMarketPage()),
+      );
       final AppLocalizations l10n = _l10nOf(tester);
 
-      // Through the board: tap the row, then accept.
-      await tester.tap(find.text('MN-1005'));
+      // The market's card is the way into the job: the reference draws a listing
+      // with no navigation of its own, and a card naming a car, a district and a
+      // fee that cannot be opened is a card that reads as a link.
+      await tester.tap(find.text('Lexus ES350 (2022)'));
       await tester.pumpAndSettle();
 
       expect(find.byType(InspectorJobDetailPage), findsOneWidget);
@@ -261,11 +542,11 @@ void main() {
       expect(find.widgetWithText(FilledButton, l10n.actionStart), findsOneWidget);
       expect(find.text(l10n.inspectorAssignedNote), findsOneWidget);
 
-      // Back on the board, the claimed request is gone.
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.text('MN-1005'), findsNothing);
-      expect(find.text(l10n.boardEmptyTitle), findsOneWidget);
+      // Back in the market, the claimed request is gone — the board query is
+      // scoped to unclaimed rows, so the listing disappears on its own.
+      await _systemBack(tester);
+      expect(find.text('Lexus ES350 (2022)'), findsNothing);
+      expect(find.text(l10n.marketEmptyTitle), findsOneWidget);
     });
 
     testWidgets('an accepted request offers start', (
@@ -331,15 +612,23 @@ void main() {
             referenceNo: 1003,
             inspectorId: 'inspector-1',
             status: InspectionStatus.inProgress,
+            make: 'Toyota',
+            model: 'FJ',
+            year: 2023,
             notes: 'The rear bumper is resprayed.',
           ),
         ],
       );
-      await _pump(
-        tester,
-        _app(repository, child: const InspectorJobDetailPage(id: 'mine-1')),
-      );
+      // Under the router, because finishing a job pushes the report form: a test
+      // that mounted the detail page as a bare `home` would throw on the push
+      // rather than reach the screen that follows it.
+      await _pump(tester, _flowApp(repository));
       final AppLocalizations l10n = _l10nOf(tester);
+
+      await tester.tap(navItem(l10n.navInspections));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Toyota FJ (2023)'));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(FilledButton, l10n.actionComplete));
       await tester.pumpAndSettle();
@@ -354,8 +643,37 @@ void main() {
 
       expect(repository.completedIds, <String>['mine-1']);
       expect(find.text(l10n.inspectorCompleted), findsOneWidget);
-      // A settled job offers no action, and says so.
+      // Finishing is not the end of the job: the report form opens over the
+      // detail, because the inspector's next task is writing the report and a
+      // separate "now go and do that" step would be one more tap for nothing.
+      expect(find.byType(ReportEntryPage), findsOneWidget);
+    });
+
+    testWidgets('a settled job offers no action and says so', (
+      WidgetTester tester,
+    ) async {
+      // Mounted directly rather than reached by completing one: the completed
+      // fixture is the settled state itself, and re-deriving it by taking the
+      // same action twice would only re-test the action.
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[
+          buildRequest(
+            id: 'done-1',
+            referenceNo: 1002,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.completed,
+          ),
+        ],
+      );
+      await _pump(
+        tester,
+        _app(repository, child: const InspectorJobDetailPage(id: 'done-1')),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
       expect(find.widgetWithText(FilledButton, l10n.actionComplete), findsNothing);
+      expect(find.widgetWithText(FilledButton, l10n.actionStart), findsNothing);
+      expect(find.widgetWithText(FilledButton, l10n.actionAccept), findsNothing);
       expect(find.text(l10n.inspectorSettledNote), findsOneWidget);
     });
 
@@ -410,8 +728,8 @@ void main() {
     });
   });
 
-  group('InspectorHomePage · my jobs', () {
-    testWidgets('separates open work from settled work', (
+  group('InspectorHomePage · the inspections tab', () {
+    testWidgets('lists this inspector’s jobs, settled and open alike', (
       WidgetTester tester,
     ) async {
       final FakeInspectionRepository repository = FakeInspectionRepository(
@@ -421,12 +739,18 @@ void main() {
             referenceNo: 1003,
             inspectorId: 'inspector-1',
             status: InspectionStatus.inProgress,
+            make: 'Toyota',
+            model: 'FJ',
+            year: 2023,
           ),
           buildRequest(
             id: 'done-1',
             referenceNo: 1002,
             inspectorId: 'inspector-1',
             status: InspectionStatus.completed,
+            make: 'Lexus',
+            model: 'ES350',
+            year: 2022,
           ),
           // Another inspector's job must not appear at all.
           buildRequest(
@@ -434,21 +758,30 @@ void main() {
             referenceNo: 1001,
             inspectorId: 'inspector-2',
             status: InspectionStatus.accepted,
+            make: 'Nissan',
+            model: 'Patrol',
+            year: 2021,
           ),
         ],
       );
       await _pump(tester, _flowApp(repository));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      await tester.tap(find.text(l10n.navMyJobs));
+      await tester.tap(navItem(l10n.navInspections));
       await tester.pumpAndSettle();
 
-      expect(find.text(l10n.myRequestsOpen), findsOneWidget);
-      expect(find.text(l10n.myRequestsSettled), findsOneWidget);
-      expect(find.text('MN-1003'), findsOneWidget);
-      expect(find.text('MN-1002'), findsOneWidget);
+      // One list with a status pill each, not two lists: an inspector's question
+      // is "what does this car need", and that is a function of the row rather
+      // than of which half of the list it fell into. The row names the car and
+      // the city — the reference's own vocabulary for a listing — so the
+      // fixtures are told apart by their car rather than by a reference number
+      // the screen never prints.
+      expect(find.text('Toyota FJ (2023)'), findsOneWidget);
+      expect(find.text('Lexus ES350 (2022)'), findsOneWidget);
+      expect(find.text(l10n.statusInProgress), findsOneWidget);
+      expect(find.text(l10n.statusCompleted), findsOneWidget);
       expect(
-        find.text('MN-1001'),
+        find.text('Nissan Patrol (2021)'),
         findsNothing,
         reason: 'anyone else\u2019s jobs are not an inspector\u2019s jobs',
       );
@@ -460,23 +793,38 @@ void main() {
       await _pump(tester, _flowApp(FakeInspectionRepository()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      await tester.tap(find.text(l10n.navMyJobs));
+      await tester.tap(navItem(l10n.navInspections));
       await tester.pumpAndSettle();
 
-      expect(find.text(l10n.jobsEmpty), findsOneWidget);
-      expect(find.text(l10n.myRequestsOpen), findsNothing);
+      expect(find.text(l10n.inspectionsEmpty), findsOneWidget);
+      expect(find.text(l10n.inspectionsEmptyBody), findsOneWidget);
     });
 
-    testWidgets('a claim appears on my jobs even though it left the board', (
+    testWidgets('a claim appears on the jobs list even though it left the board', (
       WidgetTester tester,
     ) async {
       final FakeInspectionRepository repository = FakeInspectionRepository(
-        requests: <InspectionRequest>[buildRequest(id: 'avail-1', referenceNo: 1005)],
+        requests: <InspectionRequest>[
+          buildRequest(
+            id: 'avail-1',
+            referenceNo: 1005,
+            make: 'Lexus',
+            model: 'ES350',
+          ),
+        ],
       );
+      // Started on the home shell, so the whole walk is the real one: the board's
+      // `عرض كل` link, the listing, the detail. The market has no bottom nav of
+      // its own, so a test that started there could not reach the jobs tab at all
+      // without a back gesture the design does not draw.
       await _pump(tester, _flowApp(repository));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      await tester.tap(find.text('MN-1005'));
+      await tester.tap(find.widgetWithText(TextButton, l10n.marketViewAll));
+      await tester.pumpAndSettle();
+      expect(find.byType(InspectorMarketPage), findsOneWidget);
+
+      await tester.tap(find.text('Lexus ES350 (2019)'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, l10n.actionAccept));
       await tester.pumpAndSettle();
@@ -485,33 +833,134 @@ void main() {
         matching: find.widgetWithText(FilledButton, l10n.actionAccept),
       ));
       await tester.pumpAndSettle();
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+      // Back out of the detail and off the market, onto the shell.
+      await _systemBack(tester);
+      await _systemBack(tester);
 
-      await tester.tap(find.text(l10n.navMyJobs));
+      await tester.tap(navItem(l10n.navInspections));
       await tester.pumpAndSettle();
 
       // The accepted request now lives on the jobs list, with its accepted
       // status, ready to be started.
-      expect(find.text('MN-1005'), findsOneWidget);
+      expect(find.text('Lexus ES350 (2019)'), findsOneWidget);
       expect(find.text(l10n.statusAccepted), findsOneWidget);
     });
   });
 
-  group('InspectorHomePage · profile', () {
+  group('InspectorHomePage · the wallet tab', () {
+    testWidgets('earnings are completed jobs at the flat fee', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repository = FakeInspectionRepository(
+        requests: <InspectionRequest>[
+          buildRequest(
+            id: 'done-1',
+            referenceNo: 1001,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.completed,
+            make: 'Lexus',
+            model: 'ES350',
+            year: 2022,
+          ),
+          buildRequest(
+            id: 'done-2',
+            referenceNo: 1002,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.completed,
+            make: 'Nissan',
+            model: 'Patrol',
+            year: 2021,
+          ),
+          // Open work is counted separately and earns nothing yet.
+          buildRequest(
+            id: 'live-1',
+            referenceNo: 1003,
+            inspectorId: 'inspector-1',
+            status: InspectionStatus.inProgress,
+            make: 'Toyota',
+            model: 'FJ',
+            year: 2023,
+          ),
+        ],
+      );
+      await _pump(tester, _flowApp(repository));
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      await tester.tap(navItem(l10n.navWallet));
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.walletTotalEarnings), findsOneWidget);
+      expect(find.text('ر.س 300'), findsOneWidget);
+      expect(
+        find.text(l10n.walletActiveJobs),
+        findsOneWidget,
+        reason: 'an in-progress job is active work, not an earning',
+      );
+      expect(find.text(l10n.walletCompletedJobs), findsOneWidget);
+      expect(find.text('2 inspections'), findsOneWidget);
+      expect(find.text('1 inspection'), findsOneWidget);
+      // The completed rows sit behind the figure, so the total is checkable
+      // rather than just asserted. The list names the car, not the reference:
+      // an inspector reading a payout wants to know which inspections it covers.
+      expect(find.text('Lexus ES350 (2022)'), findsOneWidget);
+      expect(find.text('Nissan Patrol (2021)'), findsOneWidget);
+      expect(
+        find.text('Toyota FJ (2023)'),
+        findsNothing,
+        reason: 'an unfinished job is not behind the earnings figure',
+      );
+      // Each row quotes the fee it contributed, so the arithmetic is visible.
+      expect(find.text('ر.س 150'), findsNWidgets(2));
+    });
+
+    testWidgets('an inspector with no completed work earns nothing, and is told so', (
+      WidgetTester tester,
+    ) async {
+      await _pump(
+        tester,
+        _flowApp(
+          FakeInspectionRepository(
+            requests: <InspectionRequest>[
+              buildRequest(
+                id: 'live-1',
+                referenceNo: 1003,
+                inspectorId: 'inspector-1',
+                status: InspectionStatus.accepted,
+              ),
+            ],
+          ),
+        ),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      await tester.tap(navItem(l10n.navWallet));
+      await tester.pumpAndSettle();
+
+      // Zero is printed, not hidden: an inspector who has just finished their
+      // first job needs to see the figure, and the figure is zero.
+      expect(find.text('ر.س 0'), findsOneWidget);
+      expect(find.text(l10n.walletEmpty), findsOneWidget);
+      expect(find.text(l10n.walletEmptyBody), findsOneWidget);
+    });
+  });
+
+  group('InspectorHomePage · the profile tab', () {
     testWidgets('shows the facts the buyer sees, with the rating', (
       WidgetTester tester,
     ) async {
       await _pump(tester, _app(FakeInspectionRepository(), child: const InspectorHomePage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      await tester.tap(find.text(l10n.navProfile));
+      await tester.tap(navItem(l10n.navProfileTab));
       await tester.pumpAndSettle();
 
       expect(find.text('Karim Adel'), findsOneWidget);
       expect(find.text(l10n.roleInspector), findsOneWidget);
       expect(find.text('Dammam'), findsWidgets);
+      // Two decimals: the design draws no rating anywhere, and a five-star scale
+      // that rounds 4.45 to 4.5 looks like it is rounding the work away.
       expect(find.text('4.50'), findsOneWidget);
+      expect(find.text('4.5'), findsNothing);
       expect(find.text(l10n.actionSignOut), findsOneWidget);
     });
 
@@ -524,9 +973,27 @@ void main() {
       );
       final FakeInspectionRepository repository = FakeInspectionRepository(
         requests: <InspectionRequest>[
-          buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Dammam'),
+          buildRequest(
+            id: 'avail-1',
+            referenceNo: 1005,
+            make: 'Lexus',
+            model: 'ES350',
+          ),
         ],
       );
+      await _pump(
+        tester,
+        _app(
+          repository,
+          child: const InspectorMarketPage(),
+          authRepository: auth,
+        ),
+      );
+      final AppLocalizations l10n = _l10nOf(tester);
+
+      // The board is scoped to the profile's city before anything is edited.
+      expect(marketHeaderCity(l10n, 'Dammam'), findsOneWidget);
+
       await _pump(
         tester,
         _app(
@@ -535,22 +1002,17 @@ void main() {
           authRepository: auth,
         ),
       );
-      final AppLocalizations l10n = _l10nOf(tester);
-
-      // The board is scoped to the profile's city before anything is edited.
-      expect(find.text(l10n.boardTitle('Dammam')), findsOneWidget);
-
-      await tester.tap(find.text(l10n.navProfile));
+      await tester.tap(navItem(l10n.navProfileTab));
       await tester.pumpAndSettle();
       await tester.tap(find.text(l10n.profileEditCity));
       await tester.pumpAndSettle();
 
-      // Open the picker sheet inside the dialog, then pick a different city.
-      await tester.tap(find.byType(CityPicker).last);
-      await tester.pumpAndSettle();
+      // A sheet, not a dialog: the profile editor reuses the same city sheet the
+      // create form's field opens, so there is one control for a city in the app
+      // rather than two that behave differently. The sheet shows the *list*,
+      // not a field — one tap from the profile row to the city.
+      expect(find.text('Jeddah'), findsWidgets);
       await tester.tap(find.text('Jeddah').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, l10n.actionSave));
       await tester.pumpAndSettle();
 
       expect(auth.updatedCities, <String>['Jeddah']);
@@ -558,11 +1020,19 @@ void main() {
       // The profile row now shows the new canonical city.
       expect(find.text('Jeddah'), findsWidgets);
 
-      // The board header follows the new service city.
-      await tester.tap(find.text(l10n.navJobBoard));
-      await tester.pumpAndSettle();
-      expect(find.text(l10n.boardTitle('Jeddah')), findsOneWidget);
-      expect(find.text(l10n.boardTitle('Dammam')), findsNothing);
+      // The board header follows the new service city, which is the whole point:
+      // RLS compares each request's city against this column, so a profile that
+      // is not updated is an inspector with a permanently empty board.
+      await _pump(
+        tester,
+        _app(
+          repository,
+          child: const InspectorMarketPage(),
+          authRepository: auth,
+        ),
+      );
+      expect(marketHeaderCity(l10n, 'Jeddah'), findsOneWidget);
+      expect(marketHeaderCity(l10n, 'Dammam'), findsNothing);
     });
 
     testWidgets('an inspector without ratings is told so', (
@@ -588,7 +1058,7 @@ void main() {
       );
       final AppLocalizations l10n = _l10nOf(tester);
 
-      await tester.tap(find.text(l10n.navProfile));
+      await tester.tap(navItem(l10n.navProfileTab));
       await tester.pumpAndSettle();
 
       expect(find.text(l10n.detailNoRatingsYet), findsOneWidget);

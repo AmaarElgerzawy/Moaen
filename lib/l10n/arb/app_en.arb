@@ -6,8 +6,6 @@
     "description": "Product name. Kept in Latin script even in Arabic locales, because that is the registered brand. The launcher label under the app icon is a separate Android string resource (values/strings.xml, values-ar/strings.xml) because that is resolved by the platform before Flutter starts."
   },
 
-  "signInTitle": "Sign in",
-  "registerTitle": "Create an account",
 
   "authSignInSubtitle": "Sign in to continue.",
   "authRegisterSubtitle": "Create an account to request or provide an inspection.",
@@ -77,62 +75,24 @@
   "phase1Title": "Phase 1 complete",
   "phase1Body": "Identity, roles and city scoping are live. Inspection requests, the job board and report entry arrive in Phase 2.",
 
-  "navRequests": "My requests",
-  "navDashboard": "Home",
 
-  "dashboardGreeting": "Hello, {name}",
-  "@dashboardGreeting": {
-    "placeholders": {
-      "name": { "type": "String" }
-    }
-  },
-  "dashboardActiveTitle": "Your active request",
-  "dashboardReportReadyTitle": "Your report is ready",
-  "dashboardCancelledTitle": "Your last request",
   "dashboardNoActiveTitle": "No active request",
   "dashboardNoActiveBody": "Book an inspection before you travel to buy a car. A local inspector checks it and sends you a report.",
   "dashboardNewRequest": "Request an inspection",
-  "dashboardViewRequests": "View all requests",
-  "dashboardReference": "Request number",
-  "dashboardSteps": "Progress",
-  "dashboardStepRequested": "Requested",
-  "dashboardStepMatched": "Inspector assigned",
-  "dashboardStepInspecting": "Inspection",
-  "dashboardStepReport": "Report ready",
 
   "costTitle": "Cost estimate",
-  "costInspection": "Inspection fee",
-  "costTravel": "Travel",
-  "costTotal": "Total",
   "costEstimateNotice": "This is an estimate. The final price is agreed with the inspector before the inspection starts.",
-  "costFree": "Free",
 
   "createTitle": "New inspection request",
-  "createSectionVehicle": "Vehicle",
-  "createSectionSeller": "Seller and location",
-  "createSectionNotes": "Notes for the inspector",
-  "createNotesHint": "Anything the inspector should know: when the car can be seen, what looks wrong, how trustworthy the seller is.",
-  "createNotesOptional": "Optional",
   "createSubmit": "Send request",
-  "createSuccess": "Request {reference} sent. An inspector in {city} will pick it up.",
-  "@createSuccess": {
-    "placeholders": {
-      "reference": { "type": "String" },
-      "city": { "type": "String" }
-    }
-  },
 
   "fieldCarMake": "Make",
   "fieldCarModel": "Model",
   "fieldCarYear": "Year",
   "fieldSellerPhone": "Seller phone",
-  "fieldSellerAddress": "Where is the car?",
   "fieldCity": "City",
   "fieldInspectionCentre": "Inspection centre",
-  "fieldBudget": "Your budget (SAR)",
-  "fieldBudgetHint": "The amount you are willing to pay. The inspector confirms before starting.",
 
-  "myRequestsTitle": "My requests",
   "myRequestsEmpty": "You have not requested an inspection yet.",
   "myRequestsOpen": "Open",
   "myRequestsSettled": "Settled",
@@ -144,26 +104,8 @@
   "requestCancelled": "Request cancelled.",
 
   "navJobBoard": "Job board",
-  "navMyJobs": "My jobs",
-  "navProfile": "Profile",
 
-  "boardTitle": "Available in {city}",
-  "@boardTitle": {
-    "placeholders": {
-      "city": { "type": "String" }
-    }
-  },
-  "boardEmptyTitle": "No requests yet",
-  "boardEmptyBody": "New inspection requests in {city} appear here.",
-  "@boardEmptyBody": {
-    "placeholders": {
-      "city": { "type": "String" }
-    }
-  },
-  "boardLoadError": "Could not load the job board.",
 
-  "jobsEmpty": "You have not accepted any inspections yet.",
-  "jobsLoadError": "Could not load your jobs.",
 
   "actionAccept": "Accept inspection",
   "actionStart": "Start inspection",
@@ -183,13 +125,7 @@
   "inspectorAvailableNote": "Available in your city.",
   "inspectorAssignedNote": "This inspection is assigned to you.",
   "inspectorSettledNote": "This inspection is settled.",
-  "profileCityNotSet": "No service city set.",
 
-  "heroTitle": "Book a new inspection",
-  "heroBody": "A certified inspector checks the car where it is and sends you a full report.",
-  "heroAction": "Request now",
-
-  "createCityHelper": "Requests appear to inspectors in this city only.",
 
   "cityPickerTitle": "Choose the city",
   "cityPickerSearchHint": "Search cities",
@@ -199,16 +135,11 @@
   "profileEditCity": "Change service city",
   "profileCityUpdated": "Service city updated.",
 
-  "actionCancel": "Cancel",
-  "actionSave": "Save",
 
-  "boardLive": "Live",
-  "boardEmptyHint": "Is the city wrong? Change your service city from your profile.",
 
   "errorRequired": "This field is required",
   "errorInvalidYear": "Enter a year between 1950 and 2100",
   "errorInvalidPhone": "Enter a valid phone number",
-  "errorInvalidBudget": "Enter an amount, for example 500",
 
   "navHome": "Home",
   "navMyRequestsTab": "My requests",
@@ -223,13 +154,6 @@
   "buyerNewInspectionTitle": "New car inspection",
   "buyerNewInspectionBody": "Pick the city and the inspector will choose the nearest centre",
   "buyerNewInspectionAction": "Request\nnow",
-  "buyerActiveSection": "Active request",
-  "buyerActiveRequestLabel": "Request {reference}",
-  "@buyerActiveRequestLabel": {
-    "placeholders": {
-      "reference": { "type": "String" }
-    }
-  },
   "buyerOrderCity": "City: {city}",
   "@buyerOrderCity": {
     "placeholders": {
@@ -267,6 +191,13 @@
   "buyerNoticeTitle": "🔔 Appointment and centre notification:",
   "buyerNoticeWillInspect": "The car will be inspected at",
   "buyerNoticeDay": "on",
+  "buyerNoticeCentre": "{centre} centre ({city})",
+  "@buyerNoticeCentre": {
+    "placeholders": {
+      "centre": { "type": "String" },
+      "city": { "type": "String" }
+    }
+  },
   "buyerNoticeWhen": "{day} at {time}",
   "@buyerNoticeWhen": {
     "placeholders": {
@@ -288,41 +219,14 @@
   "invoiceCentrePending": "⏳ Set after the inspector chooses the centre",
   "invoiceInspectorFee": "Inspector fee (coordination and scheduling)",
   "invoicePlatformFee": "Moaen platform fee (documentation)",
-  "invoiceEstimateTotalLabel": "Current estimated total:",
-  "invoiceEstimateTotalValue": "{total} + centre fee",
-  "@invoiceEstimateTotalValue": {
-    "placeholders": {
-      "total": { "type": "String" }
-    }
-  },
   "invoiceInspectorFeeInvoice": "Inspector fee (coordination and follow-up)",
   "invoicePlatformFeeInvoice": "Moaen platform fee (documentation and tracking)",
   "invoiceTotalLabel": "Total inclusive:",
   "invoiceApprove": "Approve the offer and confirm the request",
 
-  "createHeaderTitle": "New inspection request",
-  "createHeaderSubtitle": "Stage 1: submit the details and receive inspectors' offers",
-  "createCardVehicle": "🚘 Vehicle details",
-  "createFieldCarModel": "Make and model:",
-  "createHintCarModel": "e.g. Toyota FJ 2023",
-  "createFieldCity": "The city it is in:",
-  "createFieldPlate": "Plate number (optional):",
-  "createHintPlate": "3366 ABC",
-  "createFieldListing": "Car listing link (optional):",
-  "createHintListing": "https://haraj.com.sa/...",
-  "createCardSeller": "👤 Seller details for immediate coordination",
-  "createFieldSellerName": "Seller / owner name:",
-  "createHintSellerName": "e.g. Abu Fahad",
-  "createFieldSellerPhone": "Seller mobile number:",
-  "createHintSellerPhone": "05xxxxxxxx",
-  "createCardNotes": "📝 Additional notes for the inspector (optional)",
-  "createFieldNotes": "Notes or parts you want focused on:",
-  "createHintNotes": "e.g. please check the front bumper repaint or the air conditioning...",
-  "createCostCardTitle": "🔒 Cost structure and transparency (no upfront payment)",
 
   "marketTitle": "Available requests market",
   "marketSubtitle": "Pick a request to start the 48-hour coordination window",
-  "marketListTitle": "Currently listed requests",
   "marketLive": "🔴 Live update",
   "marketFeeLabel": "Inspector fee",
   "marketBuyer": "Requested by {name}",
@@ -357,11 +261,6 @@
       "city": { "type": "String" }
     }
   },
-  "contactSellerLabel": "Seller (car owner):",
-  "contactRequesterLabel": "Buyer (requested the inspection):",
-  "contactPhone": "📞 Call",
-  "contactWhatsapp": "WhatsApp",
-  "contactAwaitingBooking": "✅ Awaiting your booking",
   "centreBoxTitle": "🏬 Choose the approved centre and set the appointment",
   "centreSelectLabel": "Choose the inspection centre in {city}:",
   "@centreSelectLabel": {
@@ -370,16 +269,9 @@
     }
   },
   "centreDayTimeLabel": "Day and time agreed with the seller:",
-  "centreDayPrefix": "Day:",
   "centreConfirm": "Confirm the booking and send the appointment and centre details",
   "centreConfirmNotify": "🔔 to the buyer",
   "inspectorNewBoardTitle": "New requests listed in your city",
-  "inspectorMiniNeighbourhood": "District: {area} 📍",
-  "@inspectorMiniNeighbourhood": {
-    "placeholders": {
-      "area": { "type": "String" }
-    }
-  },
   "inspectorMiniFee": "Inspector fee: +{amount}",
   "@inspectorMiniFee": {
     "placeholders": {
@@ -394,17 +286,252 @@
       "count": { "type": "int" }
     }
   },
-  "timeHoursAgo": "{count, plural, =1 {1 hour} other {{count} hours}}",
-  "@timeHoursAgo": {
+
+  "buyerActiveHeading": "Following active request {reference}",
+  "@buyerActiveHeading": {
     "placeholders": {
-      "count": { "type": "int" }
+      "reference": { "type": "String" }
     }
   },
-  "timeDaysAgo": "{count, plural, =1 {1 day} other {{count} days}}",
-  "@timeDaysAgo": {
+  "buyerPillAwaiting": "⏳ Awaiting inspector",
+  "buyerPillReportReady": "📄 Report ready",
+  "buyerNoInspector": "No inspector assigned yet",
+  "buyerCancelledBody": "You withdrew this request. File a new one and an inspector in the city will pick it up.",
+
+  "reportsTitle": "Reports",
+  "reportsEmpty": "No reports yet",
+  "reportsEmptyBody": "A report appears here once the inspector certifies the findings.",
+  "accountTitle": "Account",
+  "inspectionsEmpty": "No inspections in progress",
+  "inspectionsEmptyBody": "Accept a request from Tasks and it will appear here.",
+  "walletTotalEarnings": "Total earnings",
+  "walletCompletedJobs": "Completed inspections",
+  "walletActiveJobs": "Active inspections",
+  "walletEmpty": "No earnings recorded yet",
+  "walletEmptyBody": "Fees are added to the wallet once the report is certified.",
+  "tabLoadError": "Could not load the data. Please try again.",
+
+  "marketViewAll": "View all",
+  "marketLocation": "📍 {city}",
+  "@marketLocation": {
     "placeholders": {
-      "count": { "type": "int" }
+      "city": { "type": "String" }
     }
   },
-  "timeJustNow": "moments"
+  "marketEmptyTitle": "No requests listed right now",
+  "marketEmptyBody": "New inspection requests in {city} appear here.",
+  "@marketEmptyBody": {
+    "placeholders": {
+      "city": { "type": "String" }
+    }
+  },
+
+  "inspectorLive": "🔴 Live",
+
+  "reportEntryTitle": "Enter full inspection results",
+  "reportEntrySubtitle": "Vehicle: {vehicle} | {centre}",
+  "@reportEntrySubtitle": {
+    "placeholders": {
+      "vehicle": { "type": "String" },
+      "centre": { "type": "String" }
+    }
+  },
+  "reportLineTag": "Inspection line {number}",
+  "@reportLineTag": {
+    "placeholders": {
+      "number": { "type": "String" }
+    }
+  },
+  "reportObdTitle": "💻 On-board diagnostics (OBD-II)",
+  "reportObdClean": "✓ No fault codes",
+  "reportObdNotesLabel": "Fault codes / recorded inspection notes:",
+  "reportBodyTitle": "🚗 Body and chassis inspection (on the lift)",
+  "reportMoneyTitle": "💰 Estimated repair cost",
+  "reportPhotosTitle": "📷 Field inspection photos and records",
+  "reportPhotoSlot": "📸 Photo {number}",
+  "@reportPhotoSlot": {
+    "placeholders": {
+      "number": { "type": "int" }
+    }
+  },
+  "reportPhotoAdd": "+ Add",
+  "reportLoadError": "Could not load the inspection data. Please try again.",
+  "reportNotReady": "Results cannot be entered before the inspection has started.",
+  "reportEngineExcellent": "Excellent (95%)",
+  "reportGradeExcellent": "Excellent",
+  "reportGradeSound": "Sound",
+  "reportGradeAcceptable": "Acceptable",
+  "reportGradeNeedsRepair": "Needs repair",
+
+  "reportVerifiedTop": "🔒 Electronically certified inspection document | Meets field assessment standards",
+  "reportNumberLabel": "Report no. {reference}",
+  "@reportNumberLabel": {
+    "placeholders": {
+      "reference": { "type": "String" }
+    }
+  },
+  "reportDateLabel": "Date: {date}",
+  "@reportDateLabel": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "reportVerdictBody": "The field inspection confirmed the core components are sound (engine, transmission, chassis). Minor cosmetic and wear items are recorded in the report for the buyer's full transparency.",
+  "reportVerdictHeadline": "Overall result: {grade}",
+  "@reportVerdictHeadline": {
+    "placeholders": {
+      "grade": { "type": "String" }
+    }
+  },
+  "reportNoInvoice": "not recorded",
+  "reportQualityCaption": "Quality index",
+  "reportVehicleSection": "Vehicle and request details",
+  "reportTileVehicle": "Vehicle",
+  "reportTilePlate": "Plate number",
+  "reportTileVin": "VIN",
+  "reportTileOdometer": "Odometer reading",
+  "reportTileCity": "Inspection city",
+  "reportTileCentre": "Approved centre",
+  "reportTileInspector": "Field inspector",
+  "reportTileInvoice": "Centre invoice",
+  "reportBlueprintSection": "Visual body inspection map (Car Blueprint)",
+  "reportEfficiencySection": "Technical sector and device efficiency",
+  "reportTableSector": "Technical sector",
+  "reportTableEfficiency": "Efficiency",
+  "reportTableNotes": "Inspector field notes",
+  "reportAttachmentsSection": "Attachments and certified field photos",
+  "reportAttachmentCorners": "📷\nVehicle corner photos",
+  "reportAttachmentOdometer": "📷\nOdometer photo",
+  "reportAttachmentEngine": "📷\nPhoto of the engine from under the car",
+  "reportAttachmentInvoice": "🧾\nOfficial invoice",
+  "reportDisclaimerLabel": "Official disclaimer:",
+  "reportDisclaimerBody": "This report was issued on the basis of the field inspection and the attached documents, invoice no. {invoice} from the approved centre. The \"Moaen\" platform provides digital certification and logistics brokerage, and disclaims responsibility for any defects that arise after the report is delivered.",
+  "@reportDisclaimerBody": {
+    "placeholders": {
+      "invoice": { "type": "String" }
+    }
+  },
+  "reportOdometerValue": "{km} km",
+  "@reportOdometerValue": {
+    "placeholders": {
+      "km": { "type": "String" }
+    }
+  },
+
+
+
+  "createStage1": "Stage 1: submit the details and receive inspector offers",
+  "cardCarTitle": "🚘 Car details to inspect",
+  "createCarTypeLabel": "Car type and model:",
+  "createCarTypeHint": "e.g. Toyota FJ",
+  "createCarModelLabel": "Model:",
+  "createCarModelHint": "e.g. FJ",
+  "createCarYearLabel": "Year of manufacture:",
+  "createCarYearHint": "e.g. 2023",
+  "createCityLabel": "City it is in:",
+  "createPlateLabel": "Plate number (optional):",
+  "createPlateHint": "3366 X Y Z",
+  "createListingLabel": "Car listing link (optional):",
+  "createListingHint": "https://haraj.com.sa/...",
+  "cardSellerTitle": "👤 Seller details for immediate coordination",
+  "createSellerNameLabel": "Seller / owner name:",
+  "createSellerNameHint": "e.g. Abu Fahad",
+  "createSellerPhoneLabel": "Seller mobile number:",
+  "createSellerPhoneHint": "05xxxxxxxx",
+  "cardNotesTitle": "📝 Extra notes for the inspector (optional)",
+  "createNotesLabel": "Notes or parts you want examined:",
+  "createNotesHint": "e.g. Please check the front bumper repaint or the air conditioning...",
+  "createCostTitle": "🔒 Cost structure and transparency (no upfront payment)",
+  "createCostCentre": "Approved centre inspection fee",
+  "createCostTotalLabel": "Current estimated total:",
+  "createCostTotalValue": "{amount} + centre fee",
+  "@createCostTotalValue": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+  "createBack": "Back",
+
+  "marketBoardTitle": "Requests listed right now",
+  "marketOwner": "👤 Owner: {name}",
+  "@marketOwner": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+
+  "inspectorTaskAwaitingBooking": "✅ Waiting for your booking",
+  "inspectorTaskSellerLabel": "Seller (car owner):",
+  "inspectorTaskPhoneLabel": "({phone})",
+  "@inspectorTaskPhoneLabel": {
+    "placeholders": {
+      "phone": { "type": "String" }
+    }
+  },
+  "inspectorTaskRequesterLabel": "Buyer (requesting party):",
+  "inspectorCallSeller": "📞 Call",
+  "inspectorWhatsappSeller": "WhatsApp",
+  "centreDayValue": "Day: {day}",
+  "@centreDayValue": {
+    "placeholders": {
+      "day": { "type": "String" }
+    }
+  },
+  "centreEmpty": "No approved centre in this city",
+
+  "accountRoleLabel": "Account type:",
+  "accountCityLabel": "City:",
+  "accountRating": "Rating",
+  "accountPhoneLabel": "Mobile:",
+
+  "centreBookedValue": "{name} approved centre ({city})",
+  "@centreBookedValue": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "city": { "type": "String" }
+    }
+  },
+
+  "inspectorNoCurrentTask": "No current task",
+  "inspectorNoCurrentTaskBody": "No accepted request needs a centre and an appointment yet. Open the market to take a new one.",
+
+  "inspectorBookedConfirmed": "✅ Appointment and centre confirmed with the seller",
+
+  "marketOwnerUnknown": "Not given",
+  "fieldSellerName": "Seller name",
+
+  "reportEntryRequest": "Request #{reference}",
+  "@reportEntryRequest": {
+    "placeholders": {
+      "reference": { "type": "String" }
+    }
+  },
+  "reportObdLabel": "Engine and gearbox computer:",
+  "reportObdCodes": "⚠️ Codes recorded (DTC)",
+  "reportBodyLabel": "Chassis and exterior:",
+  "reportBodySound": "Sound (dealer)",
+  "reportBodyRepaint": "Cosmetic repaint",
+  "reportBodyModified": "Modified / body filler",
+  "reportFenderRightLabel": "Front fender (right):",
+  "reportFenderLeftLabel": "Front fender (left):",
+  "reportMechanicsTitle": "⚙️ Mechanics and road test",
+  "reportEngineLabel": "Engine:",
+  "reportGearboxLabel": "Gearbox:",
+  "reportGearboxSmooth": "Sound and smooth",
+  "reportAcLabel": "Air conditioning and lower body:",
+  "reportRepairLabel": "Expected repair cost:",
+  "reportConditionLabel": "Vehicle condition:",
+  "reportIssueButton": "📄 Approve and issue the final A4 report",
+  "reportDigitalNoteBold": "Digital attestation:",
+  "reportDigitalNoteRest": " by issuing the report you attest that the inspection findings from the technical centre are accurate and recorded under your name via Nafath.",
+  "reportEngineGood": "Good (85%)",
+  "reportGearboxRough": "With notes",
+  "reportEntryUnavailable": "This request is not reachable, or is no longer available.",
+  "reportRepairHint": "800 SAR",
+  "reportConditionExcellent": "Excellent",
+
+  "stepCoordinationPending": "Waiting for the inspector to choose a centre",
+  "stepAppointmentPending": "Set once the inspector confirms and you approve",
+  "invoiceApproved": "✅ You approved the offer and the invoice",
+  "reportCertified": "Certified"
 }

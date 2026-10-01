@@ -139,7 +139,10 @@ void main() {
       await _pump(tester,   _app(FakeInspectionRepository(), child: const ClientDashboardPage()));
 
       expect(find.text('No active request'), findsOneWidget);
-      expect(find.text('Request now'), findsOneWidget);
+      // The design's green band breaks its own action over two lines — `اطلب +
+      // الآن` — so the label is a two-line string and a finder built from the
+      // flattened form finds nothing.
+      expect(find.text('Request\nnow'), findsOneWidget);
     });
 
     testWidgets('shows the active request by its reference number', (
@@ -154,52 +157,105 @@ void main() {
       await _pump(tester,   _app(repo, child: const ClientDashboardPage()));
 
       // The reference leads the card: it is what the buyer reads out to an
-      // inspector, so it is the one string that has to be findable.
-      expect(find.text('MN-9920'), findsOneWidget);
-      expect(find.text('Toyota Corolla 2019'), findsOneWidget);
+      // inspector, so it is the one string that has to be findable. It appears
+      // inside the design's `متابعة الطلب النشط طلب #MN-9920` heading rather
+      // than alone, so the finder is a substring one.
+      expect(find.textContaining('MN-9920'), findsOneWidget);
+      expect(find.text('Toyota Corolla (2019)'), findsOneWidget);
     });
 
-    testWidgets('shows the cost breakdown and calls it an estimate', (
+    testWidgets('shows the invoice as three lines and a total', (
       WidgetTester tester,
     ) async {
       final FakeInspectionRepository repo = FakeInspectionRepository(
         requests: <InspectionRequest>[
-          buildRequest(price: 500, status: InspectionStatus.pending),
+          buildRequest(
+            status: InspectionStatus.accepted,
+            centre: 'Kartek Centre',
+            centreFee: 300,
+            appointmentAt: DateTime.utc(2026, 9, 20, 10),
+          ),
         ],
       );
 
       await _pump(tester,   _app(repo, child: const ClientDashboardPage()));
 
-      expect(find.text('Cost estimate'), findsOneWidget);
-      expect(find.text('Inspector fee (coordination and scheduling)'), findsOneWidget);
-      expect(find.text('Moaen platform fee (documentation)'), findsOneWidget);
-      expect(find.text('Total'), findsOneWidget);
-      // The platform's two fixed lines, and their sum. 150 and 49 are the
-      // inspector's and the platform's own fees; the buyer's stated budget is a
-      // ceiling and is deliberately not on this list.
+      expect(find.text('Invoice and cost details'), findsOneWidget);
+      // The design's three lines, each bulleted: the centre's own fee (named,
+      // because one has been chosen), the inspector's, and the platform's. The
+      // bullet is part of the line the design prints, not decoration on the
+      // widget, so it belongs in the expected text.
+      expect(
+        find.text('• Approved centre inspection (Kartek Centre)'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('• Inspector fee (coordination and follow-up)'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('• Moaen platform fee (documentation and tracking)'),
+        findsOneWidget,
+      );
+      expect(find.text('Total inclusive:'), findsOneWidget);
+      // 300 + 150 + 49. The buyer's budget is gone from the design, so nothing
+      // else appears on this list.
+      expect(find.text('300 ر.س'), findsOneWidget);
+      expect(find.text('150 ر.س'), findsOneWidget);
+      expect(find.text('49 ر.س'), findsOneWidget);
+      expect(find.text('499 ر.س'), findsOneWidget);
+    });
+
+    testWidgets('an unbooked invoice says the centre fee is still to come', (
+      WidgetTester tester,
+    ) async {
+      // A total printed before the inspector has chosen a centre would be a
+      // quote for something nobody has agreed to. The design says so instead of
+      // showing a zero, which would read as free.
+      await _pump(tester,   _app(
+          FakeInspectionRepository(
+            requests: <InspectionRequest>[
+              buildRequest(status: InspectionStatus.accepted),
+            ],
+          ),
+          child: const ClientDashboardPage(),
+        ));
+
+      // Matched without the leading emoji, which the console renders as `?` and
+      // which is decoration on the sentence rather than part of it.
+      expect(
+        find.textContaining('Set after the inspector chooses the centre'),
+        findsOneWidget,
+      );
+      // Only the two fixed lines, and the floor they add up to.
       expect(find.text('150 ر.س'), findsOneWidget);
       expect(find.text('49 ر.س'), findsOneWidget);
       expect(find.text('199 ر.س'), findsOneWidget);
-
-      // The distinction matters: a total shown without this reads as a charge
-      // that has already happened, when it is a budget the buyer stated.
-      expect(
-        find.textContaining('The final price is agreed with the inspector'),
-        findsOneWidget,
-      );
+      expect(find.text('499 ر.س'), findsNothing);
     });
 
     testWidgets('the progress track advances with the status', (
       WidgetTester tester,
     ) async {
-      for (final (InspectionStatus status, int expectedReached) in <(
-        InspectionStatus,
-        int,
-      )>[
-        (InspectionStatus.pending, 1),
-        (InspectionStatus.accepted, 2),
-        (InspectionStatus.inProgress, 3),
-        (InspectionStatus.completed, 4),
+      // Counted from the request's own columns, not from `status`. The design
+      // paints a centre chosen and an appointment made as two separate finished
+      // steps, so an `accepted` request that has been booked is genuinely two
+      // steps further on than one that has not — and the status column has not
+      // caught up. Asserting only on `status` would let that distinction rot.
+      final booked = (
+        centre: 'Kartek Centre',
+        centreFee: 300.0,
+        appointmentAt: DateTime.utc(2026, 9, 20, 10),
+      );
+      for (final (
+        InspectionStatus status,
+        int expectedReached,
+        String label,
+      ) in <(InspectionStatus, int, String)>[
+        (InspectionStatus.pending, 0, 'pending: nobody has acted yet'),
+        (InspectionStatus.accepted, 1, 'accepted: the inspector is assigned'),
+        (InspectionStatus.inProgress, 3, 'in progress: booked and under way'),
+        (InspectionStatus.completed, 4, 'completed: all four steps done'),
       ]) {
         await _pump(tester,           _app(
             FakeInspectionRepository(
@@ -213,7 +269,36 @@ void main() {
         expect(
           find.byIcon(Icons.check),
           findsNWidgets(expectedReached),
-          reason: '$status should have $expectedReached completed step(s)',
+          reason: '$label, so it should have $expectedReached ticked step(s)',
+        );
+      }
+
+      // The same status, booked and not booked. Without this case the counts
+      // above would pass against a tracker that read `status` alone, and the
+      // coordination step would silently mean nothing.
+      for (final (bool bookedCentre, int expectedReached) in <(bool, int)>[
+        (false, 1),
+        (true, 2),
+      ]) {
+        await _pump(tester,           _app(
+            FakeInspectionRepository(
+              requests: <InspectionRequest>[
+                buildRequest(
+                  status: InspectionStatus.accepted,
+                  centre: bookedCentre ? booked.centre : null,
+                  centreFee: bookedCentre ? booked.centreFee : null,
+                  appointmentAt: bookedCentre ? booked.appointmentAt : null,
+                ),
+              ],
+            ),
+            child: const ClientDashboardPage(),
+          ));
+
+        expect(
+          find.byIcon(Icons.check),
+          findsNWidgets(expectedReached),
+          reason: 'accepted ${bookedCentre ? 'with' : 'without'} a centre booked '
+              'should reach $expectedReached step(s)',
         );
       }
     });
@@ -231,9 +316,14 @@ void main() {
         ));
 
       expect(find.text('Cancelled'), findsWidgets);
-      // Four unfilled dots would imply the work is merely late.
+      // Four grey numbered circles would read as a queue the work is sitting in.
+      // The request is not in a queue; it was withdrawn.
       expect(find.byIcon(Icons.check), findsNothing);
-      expect(find.text('Progress'), findsNothing);
+      expect(
+        find.text('Full inspection at the centre'),
+        findsNothing,
+        reason: 'a cancelled request must not draw the four-step tracker',
+      );
     });
 
     testWidgets('a failed load offers a retry rather than a blank screen', (
@@ -248,7 +338,6 @@ void main() {
       expect(find.text('Try again'), findsOneWidget);
     });
   });
-
   group('CreateRequestPage', () {
     testWidgets('refuses to submit an empty form', (
       WidgetTester tester,
@@ -260,11 +349,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repo.createdDrafts, isEmpty);
-      // Seven fields carry a validator: make, model, year, seller phone,
-      // address, city and budget. Notes is optional and reports nothing. The
-      // count is asserted rather than membership so that a field added without
-      // a validator — which would let an empty request through — fails here.
-      expect(find.text('This field is required'), findsNWidgets(7));
+      // Six fields carry a validator: make, model, year, seller name, seller
+      // phone and city. The plate, the listing link and the notes are all
+      // optional and report nothing. The count is asserted rather than
+      // membership so that a field added without a validator — which would let an
+      // empty request through — fails here.
+      expect(find.text('This field is required'), findsNWidgets(6));
     });
 
     testWidgets('rejects a year outside the schema bound', (
@@ -275,7 +365,7 @@ void main() {
 
       await _fillValidForm(tester);
       await tester.enterText(
-        find.widgetWithText(TextFormField, _year),
+        find.widgetWithText(TextFormField, _yearHint),
         '1949',
       );
       await tester.tap(find.text('Send request'));
@@ -283,26 +373,6 @@ void main() {
 
       expect(repo.createdDrafts, isEmpty);
       expect(find.text('Enter a year between 1950 and 2100'), findsOneWidget);
-    });
-
-    testWidgets('rejects a budget that is not a number', (
-      WidgetTester tester,
-    ) async {
-      final FakeInspectionRepository repo = FakeInspectionRepository();
-      await _pump(tester, _app(repo, child: const CreateRequestPage()));
-
-      await _fillValidForm(tester);
-      // The formatter keeps this to digits and one point, so this is what a
-      // buyer can actually end up with.
-      await tester.enterText(
-        find.widgetWithText(TextFormField, _budget),
-        '5.',
-      );
-      await tester.tap(find.text('Send request'));
-      await tester.pumpAndSettle();
-
-      expect(repo.createdDrafts, isEmpty);
-      expect(find.text('Enter an amount, for example 500'), findsOneWidget);
     });
 
     testWidgets('sends the draft the buyer filled in', (
@@ -313,46 +383,37 @@ void main() {
 
       await _fillValidForm(tester);
       await _selectCity(tester, 'Jeddah');
-      await tester.enterText(
-        find.widgetWithText(TextFormField, _budget),
-        '750',
-      );
       await tester.tap(find.text('Send request'));
       await tester.pumpAndSettle();
 
       expect(repo.createdDrafts, hasLength(1));
       final InspectionDraft sent = repo.createdDrafts.single;
       expect(sent.carMake, 'Toyota');
-      expect(sent.carModel, 'Corolla');
-      expect(sent.carYear, '2019');
-      expect(sent.sellerPhone, '+201000000001');
-      expect(sent.sellerLocationAddress, '12 Nile Street');
+      expect(sent.carModel, 'FJ');
+      expect(sent.carYear, '2023');
+      expect(sent.sellerName, 'Abu Fahad');
+      expect(sent.sellerPhone, '0501234567');
       expect(sent.city, 'Jeddah');
       expect(sent.clientNotes, 'Call before going');
-      expect(sent.budgetAmount, 750.0);
+      // No address and no budget: the design removed both inputs, so a draft can
+      // only ever carry the car's three fields, the seller's two and the city.
+      // The row's `price` is the estimate, written by `toRow`.
+      expect(sent.sellerLocationAddress, isEmpty);
+      expect(sent.clientName, 'Nadia Hassan');
     });
 
-    testWidgets('the running total follows the budget the buyer types', (
+    testWidgets('the total is the platform floor plus an unchosen centre', (
       WidgetTester tester,
     ) async {
       await _pump(tester,   _app(FakeInspectionRepository(), child: const CreateRequestPage()));
 
-      // Before anything is typed, the platform's own floor stands in: the two
-      // fixed lines, and their sum.
+      // The design's three fixed lines. The centre's is the one the buyer cannot
+      // be quoted yet: the inspector picks the centre during the coordination
+      // window, so the total names it as still-to-come rather than showing a zero
+      // that would read as free.
       expect(find.text('150 ر.س'), findsOneWidget);
       expect(find.text('49 ر.س'), findsOneWidget);
-      expect(find.text('199 ر.س'), findsOneWidget);
-
-      await tester.enterText(
-        find.widgetWithText(TextFormField, _budget),
-        '750',
-      );
-      await tester.pumpAndSettle();
-
-      // The buyer's own budget takes over as the total as soon as they state one,
-      // replacing the floor rather than being added to it.
-      expect(find.text('750 ر.س'), findsOneWidget);
-      expect(find.text('199 ر.س'), findsNothing);
+      expect(find.text('199 ر.س + centre fee'), findsOneWidget);
     });
 
     testWidgets('notes are optional', (
@@ -458,7 +519,7 @@ void main() {
           child: const MyRequestsPage(),
         ));
 
-      expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
+      expect(find.text('Could not load the data. Please try again.'), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
     });
   });
@@ -551,7 +612,8 @@ void main() {
 
       expect(find.text('No active request'), findsOneWidget);
 
-      await tester.tap(find.text('Request now'));
+      // Two lines in the design, so two lines in the finder.
+      await tester.tap(find.text('Request\nnow'));
       await tester.pumpAndSettle();
       expect(find.byType(CreateRequestPage), findsOneWidget);
 
@@ -560,29 +622,35 @@ void main() {
       await tester.pumpAndSettle();
 
       // The form pops, and the dashboard now shows the row the database
-      // returned — reference included, which is the whole point of 0004.
+      // returned — reference included, which is the whole point of 0004. The
+      // reference appears inside the design's `متابعة الطلب النشط طلب #MN-1001`
+      // heading rather than on its own, so the finder is a substring one.
       expect(find.byType(CreateRequestPage), findsNothing);
-      expect(find.text('MN-1001'), findsOneWidget);
+      expect(find.textContaining('MN-1001'), findsOneWidget);
     });
   });
 }
 
 /// Fills the required fields, and optionally the notes field.
+///
+/// Every field is found by its *hint* rather than its label, because the design
+/// puts the label in a [FieldLabel] above the field and the hint inside it — so
+/// `widgetWithText(TextFormField, label)` would find nothing. The city is the
+/// exception: it is a [CityPicker], not a text field, and has no hint at all.
 Future<void> _fillValidForm(
   WidgetTester tester, {
   bool withNotes = true,
 }) async {
-  Future<void> enter(String label, String value) =>
-      tester.enterText(find.widgetWithText(TextFormField, label), value);
+  Future<void> enter(String hint, String value) =>
+      tester.enterText(find.widgetWithText(TextFormField, hint), value);
 
-  await enter(_make, 'Toyota');
-  await enter(_model, 'Corolla');
-  await enter(_year, '2019');
-  await enter(_phone, '+201000000001');
-  await enter(_address, '12 Nile Street');
+  await enter(_makeHint, 'Toyota');
+  await enter(_modelHint, 'FJ');
+  await enter(_yearHint, '2023');
+  await enter(_sellerPhoneHint, '0501234567');
   await _selectCity(tester, 'Dammam');
-  await enter(_budget, '500');
-  if (withNotes) await enter(_notes, 'Call before going');
+  await enter(_sellerNameHint, 'Abu Fahad');
+  if (withNotes) await enter(_notesHint, 'Call before going');
   await tester.pumpAndSettle();
 }
 
@@ -600,22 +668,16 @@ Future<void> _selectCity(WidgetTester tester, String city) async {
   await tester.pumpAndSettle();
 }
 
-/// The `labelText` on each field in the create form.
+/// The `hintText` on each field in the create form.
 ///
 /// Named rather than inlined, because a finder built from the field's *value*
-/// instead of its label is a mistake that compiles and fails at runtime, and
-/// these are long enough to be easy to mistype. They mirror `app_en.arb`; a
-/// wording change there fails these tests loudly rather than silently skipping
-/// a field.
-const String _make = 'Make';
-const String _model = 'Model';
-const String _year = 'Year';
-const String _phone = 'Seller phone';
-const String _address = 'Where is the car?';
-const String _budget = 'Your budget (SAR)';
-
-/// The notes field is labelled by its instruction, which doubles as its hint.
-/// There is no short label to find it by.
-const String _notes =
-    'Anything the inspector should know: when the car can be seen, '
-    'what looks wrong, how trustworthy the seller is.';
+/// instead of its hint is a mistake that compiles and fails at runtime, and these
+/// are long enough to be easy to mistype. They mirror `app_en.arb`; a wording
+/// change there fails these tests loudly rather than silently skipping a field.
+const String _makeHint = 'e.g. Toyota FJ';
+const String _modelHint = 'e.g. FJ';
+const String _yearHint = 'e.g. 2023';
+const String _sellerNameHint = 'e.g. Abu Fahad';
+const String _sellerPhoneHint = '05xxxxxxxx';
+const String _notesHint =
+    'e.g. Please check the front bumper repaint or the air conditioning...';

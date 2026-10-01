@@ -9,6 +9,8 @@ import 'package:moaen/features/inspections/application/inspection_controller.dar
 import 'package:moaen/features/inspections/domain/inspection_request.dart';
 import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
 import 'package:moaen/features/inspections/presentation/inspector_job_detail_page.dart';
+import 'package:moaen/features/inspections/presentation/inspector_market_page.dart';
+import 'package:moaen/features/inspections/presentation/widgets/design_widgets.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
 import 'package:moaen/features/cities/application/city_controller.dart';
 
@@ -17,17 +19,23 @@ import '../../support/fake_inspection_repository.dart';
 
 /// Layout assertions for the inspector screens under the Arabic, right-to-left
 /// presentation — the mirror of `rtl_layout_test.dart` but for the inspector
-/// side, with an inspector profile so the board header and the profile tab can
+/// side, with an inspector profile so the market header and the profile tab can
 /// show the city the screens really run with.
 ///
 /// Expected strings come from [AppLocalizations] rather than typed Arabic
 /// literals, for the reasons stated in the client RTL test.
+///
+/// The fixtures here hold Arabic, unlike the English-flow tests. The production
+/// city column is an Arabic name — RLS compares each request's city against the
+/// inspector's — so a Latin fixture would assert the plumbing of a field the app
+/// never actually stores, and the one assertion this file exists to make, that
+/// Arabic cities reach an Arabic screen, could not be made at all.
 const UserProfile _signedInInspector = UserProfile(
   id: 'inspector-1',
   fullName: 'كريم عادل',
   email: 'karim@example.com',
   role: UserRole.inspector,
-  locationCity: 'Dammam',
+  locationCity: 'الدمام',
   rating: 0,
 );
 
@@ -44,7 +52,7 @@ final RegExp _arabicScript = RegExp(r'[\u0600-\u06FF]');
 /// the detail have real content to lay out.
 FakeInspectionRepository _withOneBoardRequest() => FakeInspectionRepository(
   requests: <InspectionRequest>[
-    buildRequest(id: 'avail-1', referenceNo: 1005, city: 'Dammam'),
+    buildRequest(id: 'avail-1', referenceNo: 1005, city: 'الدمام'),
   ],
 );
 
@@ -148,7 +156,7 @@ void main() {
         find.widgetWithText(FilledButton, l10n.actionAccept),
       );
       final Rect card = tester.getRect(
-        find.widgetWithText(Card, l10n.createSectionVehicle),
+        find.widgetWithText(TitledCard, l10n.cardCarTitle),
       );
 
       // A lone action is not a column of a form: it should span the same width
@@ -162,19 +170,34 @@ void main() {
   });
 
   group('the inspector chrome is Arabic', () {
-    testWidgets('the board greets in Arabic and names the service city', (
+    testWidgets('the header greets by name and the market pin names the city', (
       WidgetTester tester,
     ) async {
       await _pump(tester, _arabic(_withOneBoardRequest(), const InspectorHomePage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      expect(find.text(l10n.boardTitle('Dammam')), findsOneWidget);
+      // The greeting is the profile's own name, so it is Arabic in the database
+      // and Arabic on screen: nothing here is translated, and a screen that
+      // reached for an English name would show the Latin one.
+      expect(find.text(_signedInInspector.fullName), findsWidgets);
+      expect(_arabicScript.hasMatch(_signedInInspector.fullName), isTrue);
+
+      // The service city reaches the screen through the market's pin —
+      // `📍 الدمام` — which is the only place the reference prints it. The task
+      // board deliberately does not repeat it: Screen 4 has no such line, and an
+      // inspector's own city is not part of a summary of somebody else's job.
+      await _pump(
+        tester,
+        _arabic(_withOneBoardRequest(), const InspectorMarketPage()),
+      );
+
+      expect(find.text(l10n.marketLocation('الدمام')), findsWidgets);
       expect(
-        _arabicScript.hasMatch(l10n.boardTitle('Dammam')),
+        _arabicScript.hasMatch(l10n.marketLocation('الدمام')),
         isTrue,
         reason: 'the Arabic bundle must not be serving English',
       );
-      expect(find.text('Available in Dammam'), findsNothing);
+      expect(find.text(l10n.marketLocation('Dammam')), findsNothing);
     });
 
     testWidgets('the navigation destinations are localized', (
@@ -183,19 +206,22 @@ void main() {
       await _pump(tester, _arabic(_withOneBoardRequest(), const InspectorHomePage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      // Read inside the `NavigationBar` specifically: the selected tab's label
-      // also appears as the AppBar title, so a screen-wide finder would count
-      // both and turn a passing localization into a false failure.
+      // Read inside the bar specifically: the selected tab's label also appears
+      // as the screen's own heading, so a screen-wide finder would count both
+      // and turn a passing localization into a false failure.
       Finder inNav(String label) => find.descendant(
-        of: find.byType(NavigationBar),
+        of: find.byType(AppBottomNav),
         matching: find.text(label),
       );
 
-      expect(inNav(l10n.navJobBoard), findsOneWidget);
-      expect(inNav(l10n.navMyJobs), findsOneWidget);
-      expect(inNav(l10n.navProfile), findsOneWidget);
-      expect(inNav('Job board'), findsNothing);
-      expect(inNav('My jobs'), findsNothing);
+      // The reference's bar, in its order: المهام / الفحوصات / المحفظة / الملف.
+      expect(inNav(l10n.navTasks), findsOneWidget);
+      expect(inNav(l10n.navInspections), findsOneWidget);
+      expect(inNav(l10n.navWallet), findsOneWidget);
+      expect(inNav(l10n.navProfileTab), findsOneWidget);
+      expect(inNav('Tasks'), findsNothing);
+      expect(inNav('Inspections'), findsNothing);
+      expect(inNav('Wallet'), findsNothing);
       expect(inNav('Profile'), findsNothing);
     });
 

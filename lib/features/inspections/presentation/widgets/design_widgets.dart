@@ -20,8 +20,10 @@
 library;
 
 import 'dart:math' as math;
+import 'dart:ui' show PathMetric;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInputFormatter;
 
 import '../../../../core/theme/app_theme.dart';
 
@@ -62,12 +64,7 @@ class RtlRegion extends StatelessWidget {
 class DarkHeader extends StatelessWidget {
   const DarkHeader({
     required this.child,
-    this.padding = const EdgeInsets.fromLTRB(
-      AppSpacing.lg,
-      AppSpacing.md,
-      AppSpacing.lg,
-      AppSpacing.xl,
-    ),
+    this.padding = const EdgeInsets.all(AppSpacing.lg),
     this.bleed = true,
     super.key,
   });
@@ -279,13 +276,138 @@ class _DashedLinePainter extends CustomPainter {
       old.indent != indent;
 }
 
+/// A box with a dashed outline: the report-entry screen's "add photo" tile, and
+/// the QR placeholder on the A4.
+///
+/// Flutter has no dashed border — [BorderStyle] only offers `solid` and `none` —
+/// so this paints the four edges itself. It exists because the alternative is a
+/// solid hairline, and on a white tile a solid hairline reads as *filled* rather
+/// than as an invitation: the whole point of the tile is that there is nothing
+/// there yet.
+class DashedBorderBox extends StatelessWidget {
+  const DashedBorderBox({
+    required this.child,
+    this.color = AppColors.onDarkMuted,
+    this.radius = 12,
+    this.thickness = 1.5,
+    this.dashWidth = 5,
+    this.gap = 4,
+    super.key,
+  });
+
+  final Widget child;
+  final Color color;
+  final double radius;
+  final double thickness;
+  final double dashWidth;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DashedBoxPainter(
+        color: color,
+        radius: radius,
+        thickness: thickness,
+        dashWidth: dashWidth,
+        gap: gap,
+      ),
+      child: child,
+    );
+  }
+}
+
+class _DashedBoxPainter extends CustomPainter {
+  const _DashedBoxPainter({
+    required this.color,
+    required this.radius,
+    required this.thickness,
+    required this.dashWidth,
+    required this.gap,
+  });
+
+  final Color color;
+  final double radius;
+  final double thickness;
+  final double dashWidth;
+  final double gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = thickness
+      ..strokeCap = StrokeCap.round;
+
+    final Rect rect = Offset.zero & size;
+    final RRect rrect = RRect.fromRectAndRadius(
+      rect.deflate(thickness / 2),
+      Radius.circular(radius),
+    );
+    final Path path = Path()..addRRect(rrect);
+
+    // Dashes measured along the path's own length rather than per edge, so a
+    // wide tile and a narrow one get the same dash pattern instead of one
+    // stretching its handful of marks across the whole run.
+    for (final PathMetric metric in path.computeMetrics()) {
+      double travelled = 0;
+      while (travelled < metric.length) {
+        final double end = math.min(travelled + dashWidth, metric.length);
+        canvas.drawPath(
+          metric.extractPath(travelled, end),
+          paint,
+        );
+        travelled += dashWidth + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBoxPainter old) =>
+      old.color != color ||
+      old.radius != radius ||
+      old.thickness != thickness ||
+      old.dashWidth != dashWidth ||
+      old.gap != gap;
+}
+
 /// A pill or badge.
 ///
-/// The design uses three variants and they are not interchangeable — a light-green
-/// pill on white, a dark-green pill on a dark header, and a pale-orange badge — so
-/// they are named rather than left to a `color` parameter, which is how a
-/// "light-green fill" ends up with the wrong text contrast.
-enum PillTone { success, onDark, warning, neutral }
+/// The design uses four variants and they are not interchangeable — a light-green
+/// pill on white, a dark-green pill on a dark header, a pale-orange warning
+/// badge, and a white-on-dark action pill — so they are named rather than left to
+/// a `color` parameter, which is how a "light-green fill" ends up with the wrong
+/// text contrast.
+enum PillTone {
+  success,
+  onDark,
+  warning,
+  neutral,
+  action,
+
+  /// The design's "available for work" chip: the bright mint on the dark header,
+  /// with the header's own near-black as its text. Distinct from [onDark] on
+  /// purpose — the two sit at opposite ends of the same header row, and reusing one
+  /// treatment for both would make the inspector's availability read as another
+  /// verification badge.
+  highlight,
+
+  /// WhatsApp's own brand green, for the one control that opens WhatsApp.
+  ///
+  /// Named here rather than left to the caller because a caller's `background`
+  /// argument would be a colour no reader could trace back to a place in the
+  /// design; the same argument as [AppColors.green] is the app's green, and
+  /// opening WhatsApp from something that looks like the app's own green button is
+  /// a lie about what will happen.
+  whatsapp,
+
+  /// White fill, green text. The report-entry header's request pill, and the only
+  /// pill in the app with a light fill on the dark header — every other one is
+  /// dark-on-dark or green-on-light, so this one is its own thing rather than a
+  /// parameter.
+  inverse,
+}
 
 class AppPill extends StatelessWidget {
   const AppPill({
@@ -296,6 +418,8 @@ class AppPill extends StatelessWidget {
       horizontal: AppSpacing.md,
       vertical: AppSpacing.sm,
     ),
+    this.fontSize = 12,
+    this.onTap,
     super.key,
   });
 
@@ -304,22 +428,51 @@ class AppPill extends StatelessWidget {
   final IconData? icon;
   final EdgeInsetsGeometry padding;
 
+  /// Makes the pill a control.
+  ///
+  /// The reference draws several of its pills as buttons — the two contact chips
+  /// on the task card, the accept chip on each board row — and a pill that cannot
+  /// be pressed is not a faithful reproduction of a control, it is a label shaped
+  /// like one. Null leaves the pill non-interactive, which is what a status chip
+  /// wants.
+  ///
+  /// A null [onTap] while a pill is styled as a button (`action`, `whatsapp`) is
+  /// rendered greyed out rather than live, so a control the code could not wire up
+  /// does not invite a tap that does nothing.
+  final VoidCallback? onTap;
+
+  /// The design varies a pill's type by context: 11dp on a step's status chip,
+  /// 12dp on the market's city pill, 10dp on the inspector's verified badge.
+  final double fontSize;
+
   @override
   Widget build(BuildContext context) {
     final (Color background, Color foreground) = switch (tone) {
       PillTone.success => (AppColors.successSurface, AppColors.greenDeep),
       PillTone.onDark => (AppColors.darkBadge, AppColors.darkBadgeOn),
-      PillTone.warning => (
-        AppColors.warning.withValues(alpha: 0.14),
-        AppColors.warning,
-      ),
+      // The design's warning pill is a flat pale orange, not a tint of the orange
+      // at low alpha. They are visibly different colors on a real screen, and a
+      // tint would drift as the orange is ever so slightly adjusted.
+      PillTone.warning => (AppColors.warningSurface, AppColors.warning),
       PillTone.neutral => (AppColors.inputFill, AppColors.textSecondary),
+      PillTone.action => (AppColors.darkSurface, Colors.white),
+      PillTone.highlight => (AppColors.mint, AppColors.darkHeader),
+      PillTone.whatsapp => (AppColors.whatsappFill, AppColors.whatsappOn),
+      PillTone.inverse => (Colors.white, AppColors.green),
     };
 
-    return Container(
+    // A control with no handler is dimmed rather than left live. The disabled
+    // treatment belongs to the tap, not to the shape: a status chip is not
+    // disabled, it is simply not a control.
+    final bool inert = onTap == null &&
+        (tone == PillTone.action || tone == PillTone.whatsapp);
+    final Color fill = inert ? AppColors.inputFill : background;
+    final Color ink = inert ? AppColors.textSecondary : foreground;
+
+    final Widget body = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: background,
+        color: fill,
         borderRadius: BorderRadius.circular(AppRadius.pill),
         border: tone == PillTone.success
             ? Border.all(color: AppColors.successBorder)
@@ -329,7 +482,7 @@ class AppPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           if (icon != null) ...<Widget>[
-            Icon(icon, size: 14, color: foreground),
+            Icon(icon, size: 14, color: ink),
             const SizedBox(width: AppSpacing.xs),
           ],
           // The design's pills carry their own emoji (`📍`, `🔴`, `🔒`) inside the
@@ -337,12 +490,23 @@ class AppPill extends StatelessWidget {
           Flexible(
             child: Text(
               label,
-              style: AppText.pill(12, color: foreground),
+              style: AppText.pill(fontSize, color: ink),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return Semantics(label: label, child: body);
+    return Semantics(
+      button: true,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: body,
       ),
     );
   }
@@ -566,7 +730,10 @@ class FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Text(text, style: AppText.title(14, color: color)),
+      // 12dp bold, the design's `.lbl`. Not 14: that is the `.card h3` size, and
+      // a field label set at the card-title size stops reading as subordinate to
+      // the card it sits in.
+      child: Text(text, style: AppText.title(12, color: color)),
     );
   }
 }
@@ -832,12 +999,15 @@ class StatsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The design's bar is a bordered box and nothing else: no fill of its own, a
+    // 1dp border at 18% white, and a hairline between the columns rather than
+    // around them. A 5% white fill would read as a raised panel, which is a
+    // different component from the one the reference draws.
     final Widget row = Container(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.row),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       child: Row(
         children: <Widget>[
@@ -863,7 +1033,7 @@ class StatsBar extends StatelessWidget {
                   Text(
                     stats[i].value,
                     textAlign: TextAlign.center,
-                    style: AppText.onDark(16),
+                    style: AppText.onDark(14),
                   ),
                 ],
               ),
@@ -895,6 +1065,7 @@ class TitledCard extends StatelessWidget {
     this.background = AppColors.surface,
     this.borderColor = AppColors.cardBorder,
     this.titleColor,
+    this.onTap,
     super.key,
   });
 
@@ -910,9 +1081,13 @@ class TitledCard extends StatelessWidget {
   final Color borderColor;
   final Color? titleColor;
 
+  /// Makes the whole card tappable. Used by the inspector's board rows, where
+  /// the design puts the whole card behind the "قبول الطلب" pill.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final Widget container = Container(
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
@@ -925,24 +1100,1028 @@ class TitledCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Expanded(
                 child: Text(
                   title,
-                  style: AppText.title(15, color: titleColor),
+                  style: AppText.title(14, color: titleColor),
                 ),
               ),
               if (trailingLabel != null)
-                Text(
-                  trailingLabel!,
-                  style: AppText.pill(11, color: AppColors.green),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    trailingLabel!,
+                    style: AppText.pill(11, color: AppColors.green),
+                  ),
                 ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
+          // The design's `.card h3` rule: a solid hairline that reads as dashed
+          // at 1dp on a light background. Painted solid rather than dashed
+          // because the card titles in the reference have already been given a
+          // dashed rule of their own in the A4, and two different dashes on one
+          // screen stop meaning anything.
+          const SizedBox(height: AppSpacing.sm),
           const DashedDivider(),
           const SizedBox(height: AppSpacing.md),
           child,
+        ],
+      ),
+    );
+
+    if (onTap == null) return container;
+
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: container,
+      ),
+    );
+  }
+}
+
+/// The design's plain card: white, 18dp corners, a hairline border and a 14dp
+/// inset — with no title rule, because not every card in the reference has a
+/// heading ([TitledCard] is the one that does).
+class DesignCard extends StatelessWidget {
+  const DesignCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(AppSpacing.inset),
+    this.background = AppColors.surface,
+    this.borderColor = AppColors.cardBorder,
+    this.borderRadius,
+    this.onTap,
+    super.key,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final Color background;
+  final Color borderColor;
+
+  /// Overridden to 20dp by the market's request card, which the design draws
+  /// larger than every other card.
+  final double? borderRadius;
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget container = Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(borderRadius ?? AppRadius.card),
+        border: Border.all(color: borderColor),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: child,
+    );
+
+    if (onTap == null) return container;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(borderRadius ?? AppRadius.card),
+      child: container,
+    );
+  }
+}
+
+/// The design's `.two`: two equal columns with a 10dp gap.
+///
+/// [flex] exists for the one place the reference is uneven — the create form's
+/// city and plate row, where the city takes 1.3 and the plate 1. A `Row` with
+/// `Expanded` children is the whole widget; naming the ratio here keeps the
+/// 1.3 out of the screen.
+class TwoUp extends StatelessWidget {
+  const TwoUp({required this.children, this.flexLeft = 1, super.key})
+    : assert(
+        children.length == 2,
+        'TwoUp is the design\'s two-column row; use a Row for anything else',
+      );
+
+  final List<Widget> children;
+  final int flexLeft;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(flex: flexLeft, child: children[0]),
+        const SizedBox(width: AppSpacing.row),
+        Expanded(child: children[1]),
+      ],
+    );
+  }
+}
+
+/// The design's read-only dropdown: the input fill, the current value, and the
+/// `⌄` chevron on its own at the far end.
+///
+/// A distinct widget from a `TextFormField` because it must not be focusable.
+/// Every one of these in the reference is a *choice already made or to be made
+/// from a menu* — the engine verdict, the fender condition, the centre — and a
+/// focusable field that accepts free text would let a buyer file a report whose
+/// engine condition is a sentence.
+class SelectField extends StatelessWidget {
+  const SelectField({
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.muted = false,
+    this.ltr = false,
+    this.trailing,
+    super.key,
+  });
+
+  final String label;
+
+  /// The current selection. Empty renders the muted placeholder styling, which
+  /// is how the design distinguishes "nothing chosen yet" from a choice.
+  final String value;
+
+  final VoidCallback? onTap;
+
+  /// True renders [value] in the secondary gray — the design's unfilled field.
+  final bool muted;
+
+  /// True for a value that is itself left-to-right, such as a listing URL. The
+  /// chevron stays at the physical right either way.
+  final bool ltr;
+
+  /// Replaces the `⌄` chevron. Used by the city picker, which shows a pencil
+  /// while it is being edited rather than an open-chevron.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool empty = value.trim().isEmpty;
+
+    // An unfilled `.fld v` shows its own label in the muted grey.
+    //
+    // The reference never draws an empty one — every `.fld v` on the prototype is
+    // prefilled — so this is the shape the design leaves unspecified. It is
+    // [label], not an empty string, because a 48dp box holding nothing but a
+    // chevron is indistinguishable from a field that failed to render, and three
+    // of them in a row is a form that looks broken rather than unfinished.
+    final String shown = empty ? label : value;
+
+    final Widget field = Container(
+      // Fills the cell it is given. A `Column` with `CrossAxisAlignment.start`
+      // hands its children loose width, and a Container holding a `Row` with an
+      // `Expanded` inside shrink-wraps to that Row's minimum — so without this
+      // the design's full-width `.fld v` renders as a box as wide as its own
+      // text, sitting in the middle of a wider column.
+      width: double.infinity,
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.inset),
+      decoration: BoxDecoration(
+        // `.fld.w` — the white variant. Every one of these sits inside a card
+        // and holds a value rather than inviting typing, so it is white to
+        // separate "this is set" from "this is a form to fill in".
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              shown,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textDirection: ltr ? TextDirection.ltr : null,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.3,
+                color: (empty || muted)
+                    ? AppColors.textSecondary
+                    : AppColors.textPrimary,
+                fontWeight: (empty || muted)
+                    ? FontWeight.w400
+                    : FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          trailing ??
+              const Text(
+                '⌄',
+                // Pinned to LTR so the chevron is not mirrored into a different
+                // glyph by the bidi algorithm. A `⌄` has no mirrored form, so
+                // the override is what stops it becoming a mark that points the
+                // wrong way under RTL.
+                textDirection: TextDirection.ltr,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.2,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+        ],
+      ),
+    );
+
+    if (onTap == null) return field;
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: field,
+      ),
+    );
+  }
+}
+
+/// A [SelectField] that opens a sheet of [options] and reports the chosen index.
+///
+/// The design's `.fld v` + `⌄` fields are controls, not labels: on the
+/// report-entry screen four of them hold a verdict that has to be picked from a
+/// set, and the sheet is where that set is shown. A sheet rather than a
+/// `DropdownButton` because Material's menu is a rounded white sheet with a
+/// Material divider, and the reference's menus are full-bleed lists under a
+/// centered title — the same sheet the centre picker and the date picker already
+/// use in this app.
+///
+/// [onChanged] is not called when the same option is chosen again, so a
+/// `ConsumerState` holding the selection is not rebuilt for no change.
+class ChoiceField extends StatelessWidget {
+  const ChoiceField({
+    required this.label,
+    required this.options,
+    required this.selectedIndex,
+    required this.onChanged,
+    super.key,
+  });
+
+  final String label;
+  final List<String> options;
+
+  /// -1 for nothing chosen yet, which renders the field in its muted state.
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool chosen = selectedIndex >= 0 && selectedIndex < options.length;
+    return SelectField(
+      label: label,
+      value: chosen ? options[selectedIndex] : '',
+      muted: !chosen,
+      onTap: () => _pick(context),
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final int? picked = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) => _ChoiceSheet(
+        title: label,
+        options: options,
+        selectedIndex: selectedIndex,
+      ),
+    );
+    if (picked == null || picked == selectedIndex) return;
+    onChanged(picked);
+  }
+}
+
+class _ChoiceSheet extends StatelessWidget {
+  const _ChoiceSheet({
+    required this.title,
+    required this.options,
+    required this.selectedIndex,
+  });
+
+  final String title;
+  final List<String> options;
+  final int selectedIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.xs,
+              AppSpacing.lg,
+              AppSpacing.md,
+            ),
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: AppText.title(15),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: options.length,
+              itemBuilder: (BuildContext context, int index) => ListTile(
+                title: Text(
+                  options[index],
+                  style: index == selectedIndex
+                      ? AppText.title(14, color: AppColors.green)
+                      : AppText.secondary(14),
+                ),
+                trailing: index == selectedIndex
+                    ? const Icon(Icons.check, color: AppColors.green)
+                    : null,
+                onTap: () => Navigator.of(context).pop(index),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The design's `.seg`: a row of equal, tappable choices where the selected one
+/// is light green with a green border and a green label.
+///
+/// A segmented control rather than a `DropdownButton` because the reference
+/// shows every option at once — the design's whole point on these cards is that
+/// the buyer or inspector can see the range of what "سليم" can mean before
+/// choosing, and a collapsed menu hides exactly that.
+class SegmentedChoice extends StatelessWidget {
+  const SegmentedChoice({
+    required this.options,
+    required this.selectedIndex,
+    required this.onChanged,
+    super.key,
+  });
+
+  final List<String> options;
+
+  /// The index of the chosen option, or -1 for nothing chosen yet.
+  final int selectedIndex;
+
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        for (int i = 0; i < options.length; i++) ...<Widget>[
+          if (i > 0) const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: _Segment(
+              label: options[i],
+              selected: i == selectedIndex,
+              onTap: () => onChanged(i),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _Segment extends StatelessWidget {
+  const _Segment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xs,
+            vertical: AppSpacing.md,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.successSurface : AppColors.inputFill,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+              color: selected ? AppColors.green : AppColors.cardBorder,
+            ),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: AppText.pill(
+              12,
+              color: selected ? AppColors.green : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The design's photo slot: a flat gray square for an image that exists, and a
+/// dashed-outline square for the one that would add the next.
+///
+/// [onTap] is what separates the two — a slot that can be pressed is an
+/// "add" slot, so the caller does not have to remember to pass the right shape.
+///
+/// A taken photo replaces the gray with the image itself, and the label goes away
+/// entirely: the design's `📸 صورة 1` is the *empty* state, and a filled slot
+/// captioned `صورة 1` is a thumbnail with a redundant caption on top of it.
+class PhotoSlot extends StatelessWidget {
+  const PhotoSlot({
+    required this.label,
+    this.onTap,
+    this.imageUrl,
+    super.key,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+
+  /// The photo's public URL, once one has been uploaded. Null for a slot with
+  /// nothing in it, which is the state the design draws.
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool add = onTap != null;
+    final String? url = imageUrl;
+
+    final Widget content = url == null
+        ? Text(
+            label,
+            textAlign: TextAlign.center,
+            style: AppText.pill(11, color: AppColors.textSecondary),
+          )
+        : Image.network(
+            url,
+            fit: BoxFit.cover,
+            // A broken URL must not leave a raw exception box in the middle of a
+            // report the inspector is about to attest to; the slot falls back to
+            // its empty state, which is a true statement about what is stored.
+            errorBuilder: (_, _, _) => Text(
+              label,
+              textAlign: TextAlign.center,
+              style: AppText.pill(11, color: AppColors.textSecondary),
+            ),
+            loadingBuilder: (
+              BuildContext context,
+              Widget child,
+              ImageChunkEvent? progress,
+            ) => progress == null
+                ? child
+                : const Center(
+                    child: SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+          );
+
+    final Widget slot = AspectRatio(
+      aspectRatio: 1,
+      child: url == null && add
+          // Dashed rather than solid, and 1.5dp rather than 1dp: the design's
+          // add-tile is the only dashed *box* in the app, and that is what
+          // distinguishes "there is nothing here, add something" from "here is
+          // a framed picture".
+          ? DashedBorderBox(
+              child: Container(
+                width: double.infinity,
+                alignment: Alignment.center,
+                color: Colors.white,
+                child: content,
+              ),
+            )
+          : Container(
+              width: double.infinity,
+              clipBehavior: Clip.antiAlias,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: url == null ? AppColors.photoFill : null,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: content,
+            ),
+    );
+
+    if (onTap == null) return slot;
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: slot,
+      ),
+    );
+  }
+}
+
+/// The market card's fee box: a large green figure over a tiny label, centred on
+/// the light-green fill.
+class FeeBadge extends StatelessWidget {
+  const FeeBadge({required this.amount, required this.caption, super.key});
+
+  /// The inspector's fee as the design writes it on this card: `+150`, without
+  /// the currency, because the caption underneath carries the units.
+  final String amount;
+
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.row,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.successSurface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            amount,
+            style: AppText.title(22, color: AppColors.green).copyWith(
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(caption, style: AppText.pill(10, color: AppColors.green)),
+        ],
+      ),
+    );
+  }
+}
+
+/// A figure with a fill bar behind it, as the report's efficiency table draws
+/// it: a fixed-width track, a green fill proportional to the score, and the
+/// percentage beside it.
+///
+/// The track is a fixed 90dp because the design draws it that way and because a
+/// bar that grows with the column is not a comparable bar — a 95% in a narrow
+/// column and a 95% in a wide one have to be the same length to be read against
+/// each other.
+class EfficiencyBar extends StatelessWidget {
+  const EfficiencyBar({
+    required this.percent,
+    required this.grade,
+    this.warn = false,
+    this.trackWidth = 90,
+    super.key,
+  });
+
+  /// 0..100.
+  final int percent;
+
+  /// The design's own word for the figure: `(ممتاز)`, `(سليم)`, `(مقبول)`.
+  final String grade;
+
+  /// True for the one row the design paints orange — the 80% suspension.
+  final bool warn;
+
+  final double trackWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = warn ? AppColors.warning : AppColors.green;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          child: SizedBox(
+            width: trackWidth,
+            height: 5,
+            child: Stack(
+              children: <Widget>[
+                Container(color: AppColors.cardBorder),
+                FractionallySizedBox(
+                  // `direction: rtl` on the design's track, so the fill grows
+                  // from the right. Reproduced by anchoring the fill's end to
+                  // the start edge rather than by mirroring the widget, which
+                  // would also mirror the grade beside it.
+                  alignment: AlignmentDirectional.centerStart,
+                  widthFactor: (percent / 100).clamp(0.0, 1.0),
+                  child: Container(color: color),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Text(
+          '$percent% $grade',
+          style: AppText.pill(12, color: color),
+        ),
+      ],
+    );
+  }
+}
+
+/// The buyer's invoice box: a hair-off-white surface with a border, holding a
+/// heading row, the cost lines, a dashed rule and the total.
+///
+/// Off-white rather than the light green of the create screen's box, because the
+/// two boxes say different things. On the create screen the light green is
+/// "this is what it will cost you, roughly, and nothing is charged yet"; here the
+/// centre is named and the total is a figure the buyer is being asked to approve,
+/// so it reads as a document rather than a quote.
+class InvoiceBox extends StatelessWidget {
+  const InvoiceBox({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// One line of a cost breakdown: a sentence on one side, a figure on the other.
+///
+/// Both sides flex. A `Row` hands non-flex children *unbounded* main-axis
+/// width, and the design's labels are full sentences — "أتعاب المعاين (التنسيق
+/// والجدولة)" — so an unconstrained one overflows the card instead of wrapping.
+/// The figure gets the larger share because it is usually the shorter string.
+class CostLine extends StatelessWidget {
+  const CostLine({
+    required this.label,
+    required this.value,
+    this.bullet = true,
+    this.emphasise = false,
+    this.valueColor,
+    this.valueSize = 13,
+    super.key,
+  });
+
+  final String label;
+  final String value;
+
+  /// The design's invoice lines are bulleted with a `•` and the create screen's
+  /// are not; the two boxes differ by more than colour and this is the other
+  /// difference.
+  final bool bullet;
+
+  final bool emphasise;
+  final Color? valueColor;
+  final double valueSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(
+            flex: 2,
+            child: Text(
+              bullet ? '• $label' : label,
+              style: emphasise
+                  ? AppText.title(13, color: AppColors.greenDeep)
+                  : TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: AppColors.textPrimary,
+                      fontWeight: emphasise
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Flexible(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: AppText.title(
+                valueSize,
+                color: valueColor ?? AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A state that has nothing to show: no request yet, no report yet, a list the
+/// user has not filled.
+///
+/// Used by the tabs the reference does not draw and by every screen's empty
+/// branch, so "nothing here yet" is one object rather than six near-identical
+/// centre-aligned columns that drift apart.
+class DesignEmpty extends StatelessWidget {
+  const DesignEmpty({
+    required this.title,
+    this.body,
+    this.action,
+    super.key,
+  });
+
+  final String title;
+  final String? body;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.xxl,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: AppText.title(15),
+          ),
+          if (body case final String text when text.isNotEmpty) ...<Widget>[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: AppText.secondary(13),
+            ),
+          ],
+          if (action != null) ...<Widget>[
+            const SizedBox(height: AppSpacing.lg),
+            action!,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A load failure with a retry.
+///
+/// Every list in the app is a pure read, so retrying is always safe and a
+/// permanent error page is never the right answer.
+class DesignRetry extends StatelessWidget {
+  const DesignRetry({
+    required this.message,
+    required this.actionLabel,
+    required this.onRetry,
+    super.key,
+  });
+
+  final String message;
+  final String actionLabel;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.xxl,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: AppText.secondary(13),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          OutlinedButton(onPressed: onRetry, child: Text(actionLabel)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The design's `.fld`: a flat input with the hint *inside* it, not above.
+///
+/// A `TextFormField` with a Material `InputDecoration`, because the label has to
+/// be able to sit above it as a [FieldLabel] — the reference never floats a label
+/// into a field's border, and Material's floating label would put one there and
+/// move the field's text when it takes focus. The error is rendered *below* the
+/// field rather than inside it, for the same reason [CityPicker] reserves its
+/// helper space: a row that changes height the moment it goes red shoves the rest
+/// of a form down while the buyer is looking at it.
+class DesignTextField extends StatelessWidget {
+  const DesignTextField({
+    required this.controller,
+    this.hintText,
+    this.keyboardType,
+    this.inputFormatters,
+    this.validator,
+    this.textInputAction,
+    this.maxLines = 1,
+    this.maxLength,
+    this.enabled = true,
+    this.ltr = false,
+    super.key,
+  });
+
+  final TextEditingController controller;
+
+  /// The reference's grey placeholder, shown inside the field while it is empty.
+  final String? hintText;
+
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+  final String? Function(String?)? validator;
+  final TextInputAction? textInputAction;
+  final int maxLines;
+
+  /// Sets the counter's reach, not the text: `maxLength` here is a *cap*, and the
+  /// design shows no counter. See [showCounter]: the reference has no counters on
+  /// any field, and a "12/1000" under a notes box is an instruction the design
+  /// never gave.
+  final int? maxLength;
+
+  final bool enabled;
+
+  /// True for a value that is itself left-to-right — a URL, a phone number. The
+  /// field keeps the reference's shape; only the text's direction changes, because
+  /// the bidi algorithm will otherwise lay out `https://haraj.com.sa/...` against
+  /// an RTL paragraph and put the scheme at the wrong end.
+  final bool ltr;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      validator: validator,
+      textInputAction: textInputAction,
+      maxLines: maxLines,
+      minLines: maxLines,
+      maxLength: maxLength,
+      enabled: enabled,
+      textDirection: ltr ? TextDirection.ltr : null,
+      style: const TextStyle(
+        fontSize: 13,
+        height: 1.4,
+        color: AppColors.textPrimary,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: const TextStyle(
+          fontSize: 13,
+          color: AppColors.textSecondary,
+          fontWeight: FontWeight.w400,
+        ),
+        filled: true,
+        fillColor: AppColors.inputFill,
+        isDense: true,
+        // The reference's 12dp corners and 1dp border, on a fill that is the input
+        // token rather than the theme's surface tint — these fields are grey on
+        // purpose, to read as "fill this in" against the white card they sit in.
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.inset,
+          vertical: AppSpacing.md,
+        ),
+        enabledBorder: _border(AppColors.cardBorder),
+        focusedBorder: _border(AppColors.green),
+        errorBorder: _border(AppColors.live),
+        focusedErrorBorder: _border(AppColors.live),
+        // Reserved whether or not there is an error, so the field does not change
+        // height the moment it goes red.
+        helperMaxLines: 2,
+        errorMaxLines: 2,
+        counterText: '',
+        counterStyle: const TextStyle(fontSize: 0, height: 0),
+      ),
+    );
+  }
+
+  OutlineInputBorder _border(Color color) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(AppRadius.md),
+    borderSide: BorderSide(color: color),
+  );
+}
+
+/// The dark header for a tab the reference's bar names but does not draw.
+///
+/// Shaped as the pushed-screen header rather than the tab header: these tabs are
+/// the bottom half of the buyer's and inspector's bars, and there is nothing on
+/// the reference to copy, so the one header the reference *does* define is reused
+/// at the reduced weight a title needs. Without it these tabs would arrive as
+/// Material `AppBar`s in a design that has no Material `AppBar` anywhere — which
+/// is what "restyled, not left alone" has to rule out.
+class ShellHeader extends StatelessWidget {
+  const ShellHeader({required this.title, this.trailing, super.key});
+
+  final String title;
+
+  /// Optional pill at the far end, for a count or a status.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return DarkHeader(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(child: Text(title, style: AppText.onDark(19))),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
+/// One line of a detail list: a gray label at the start edge, the value filling
+/// the rest.
+///
+/// Both sides flex for the same reason [CostLine] does. The labels in these lists
+/// are sentences — `رقم جوال البائع` is fine, `رابط إعلان السيارة` is fine, but
+/// `السعر المعتمد بعد اختيار المركز` would be given an unbounded width and
+/// overflow rather than wrap.
+class AccountRow extends StatelessWidget {
+  const AccountRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.trailing,
+    super.key,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  /// An optional control at the row's far end, past the value.
+  ///
+  /// For the one field on a detail list a person is allowed to change. The
+  /// reference's `عرض كل` link is the same idea at the same size and in the same
+  /// green, so an editable row and a navigable one look alike — which is correct:
+  /// both are a small coloured verb at the end of a line of facts.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(
+            child: Text(label, style: AppText.secondary(13)),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            flex: 2,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: AppText.title(
+                13,
+                color: valueColor ?? AppColors.textPrimary,
+              ),
+            ),
+          ),
+          if (trailing case final Widget action) ...<Widget>[
+            const SizedBox(width: AppSpacing.sm),
+            action,
+          ],
         ],
       ),
     );

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../inspections/presentation/widgets/design_widgets.dart';
 import '../application/city_controller.dart';
 import '../data/city_repository.dart';
 
@@ -26,6 +27,7 @@ class CityPicker extends ConsumerWidget {
     this.initialValue,
     this.validator,
     this.onChanged,
+    this.design = false,
   });
 
   final String label;
@@ -34,8 +36,26 @@ class CityPicker extends ConsumerWidget {
   final String? Function(String?)? validator;
   final ValueChanged<String>? onChanged;
 
+  /// True renders the reference's `.fld v` — a white field with the value inside
+  /// and a `⌄` chevron, no floating label.
+  ///
+  /// Two shapes rather than one styled with parameters, because the two belong to
+  /// two different design systems: the Material one is the app's sign-up form,
+  /// and this one is the Moaayen screens, where no field anywhere has a floating
+  /// label. A single widget with a flag would end up with an `if` in its build
+  /// and a decoration that is half of each.
+  final bool design;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (design) {
+      return _DesignCityPicker(
+        label: label,
+        initialValue: initialValue,
+        validator: validator,
+        onChanged: onChanged,
+      );
+    }
     return FormField<String>(
       initialValue: initialValue,
       validator: validator,
@@ -70,15 +90,110 @@ class CityPicker extends ConsumerWidget {
     WidgetRef ref,
     FormFieldState<String> field,
   ) async {
-    final String? picked = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (BuildContext sheetContext) => _CitySheet(selected: field.value),
-    );
+    final String? picked = await showCitySheet(context, selected: field.value);
     if (picked == null || picked == field.value) return;
     field.didChange(picked);
     onChanged?.call(picked);
+  }
+}
+
+/// Opens the searchable city list as a sheet, and returns the chosen city's
+/// Arabic name — the string RLS compares against — or null if it was dismissed.
+///
+/// The single way into the sheet: both pickers call it, and so does the
+/// inspector's profile editor, which is the point of having it.
+///
+/// The editor opens the list rather than a [CityPicker]. A sheet whose content
+/// is a field that opens a *second* sheet costs two taps and two animations to
+/// choose one city, and it lies about what is on screen — the first sheet shows
+/// a form field, not a list. It also lays out badly: a bottom sheet hands its
+/// child the full screen height as a maximum, so a column with the default
+/// `MainAxisSize.max` stretches to all of it and centres the lone field halfway
+/// down the display, unreachable without scrolling a sheet that is not
+/// scrollable.
+Future<String?> showCitySheet(BuildContext context, {String? selected}) =>
+    showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) => _CitySheet(selected: selected),
+    );
+
+/// The reference's version of the field: a [SelectField] holding the value, with
+/// the error rendered beneath it rather than inside it.
+///
+/// The error sits below rather than overlaid because the reference's `.fld` has a
+/// fixed 48dp height and there is nowhere inside it to put a sentence — and
+/// because a field that grows the moment it goes red moves every field under it,
+/// which on a form this long means the buyer loses their place.
+class _DesignCityPicker extends ConsumerWidget {
+  const _DesignCityPicker({
+    required this.label,
+    required this.initialValue,
+    required this.validator,
+    required this.onChanged,
+  });
+
+  final String label;
+
+  /// The pre-selected city.
+  ///
+  /// Carried into the [FormField] rather than read from the field, because a
+  /// `FormField` that is told its validator but not its initial value validates
+  /// an empty string it was never meant to hold — which is how the city field
+  /// came to reject a city that had in fact been chosen.
+  final String? initialValue;
+  final String? Function(String?)? validator;
+  final ValueChanged<String>? onChanged;
+
+  /// Opens the shared sheet and folds the result back into [field].
+  ///
+  /// Repeated from [CityPicker] rather than shared, because the two widgets have
+  /// nothing else in common: one returns a `FormField` for the sign-up form, the
+  /// other a `SelectField` for the reference. A shared helper would need both
+  /// widgets' types as parameters and return whichever of them the caller wanted,
+  /// which is a function that dispatches on a flag — the thing this pair exists to
+  /// avoid.
+  Future<void> _pick(
+    BuildContext context,
+    FormFieldState<String> field,
+  ) async {
+    final String? picked = await showCitySheet(context, selected: field.value);
+    if (picked == null || picked == field.value) return;
+    field.didChange(picked);
+    onChanged?.call(picked);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FormField<String>(
+      initialValue: initialValue,
+      validator: validator,
+      builder: (FormFieldState<String> field) => Column(
+        // Shrink-wrapped: the field is a 48dp row, and a column that took the
+        // maximum height available would put it in the middle of whatever box it
+        // was dropped into — a bottom sheet, for one, whose maximum is the whole
+        // screen.
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SelectField(
+            label: label,
+            value: field.value ?? '',
+            muted: field.value == null || field.value!.trim().isEmpty,
+            onTap: () => _pick(context, field),
+          ),
+          if (field.errorText case final String error)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              child: Text(
+                error,
+                style: const TextStyle(fontSize: 11, color: AppColors.live),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

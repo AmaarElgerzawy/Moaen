@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moaen/features/inspections/domain/inspection_draft.dart';
+import 'package:moaen/features/inspections/domain/inspection_report.dart';
 import 'package:moaen/features/inspections/domain/inspection_request.dart';
 
 import '../../support/fake_inspection_repository.dart';
@@ -139,8 +140,10 @@ void main() {
       expect(buildRequest(referenceNo: 9920).reference, 'MN-9920');
     });
 
-    test('the car description fits on a list row', () {
-      expect(buildRequest().carDescription, 'Toyota Corolla 2019');
+    test('the car description parenthesises the year', () {
+      // The design writes the car as `تويوتا أف جي (2023)` on the report and in
+      // the entry form's subtitle, so the year is bracketed rather than run on.
+      expect(buildRequest().carDescription, 'Toyota Corolla (2019)');
     });
 
     test('awaiting-inspector is only the pending state', () {
@@ -178,47 +181,6 @@ void main() {
     });
   });
 
-  group('InspectionDraft.budgetAmount', () {
-    test('parses a plain amount', () {
-      expect(const InspectionDraft(budget: '500').budgetAmount, 500.0);
-      expect(const InspectionDraft(budget: '495.50').budgetAmount, 495.5);
-    });
-
-    test('tolerates surrounding whitespace', () {
-      expect(const InspectionDraft(budget: '  500  ').budgetAmount, 500.0);
-    });
-
-    test('rejects a negative amount', () {
-      // The schema allows `price >= 0`. A negative budget is not a refund, it is
-      // a value the form should never produce.
-      expect(const InspectionDraft(budget: '-100').budgetAmount, isNull);
-    });
-
-    test('rejects what a person might type mid-edit', () {
-      // These are the intermediate states of typing. The field is a string
-      // precisely so that they are representable; the question is only whether
-      // they parse to something sendable.
-      expect(const InspectionDraft(budget: '').budgetAmount, isNull);
-      expect(const InspectionDraft(budget: 'abc').budgetAmount, isNull);
-      expect(const InspectionDraft(budget: '500 ر.س').budgetAmount, isNull);
-    });
-
-    test('rejects a trailing bare decimal point', () {
-      // `double.tryParse('500.')` returns 500.0, so without an explicit check
-      // this would be accepted — and a buyer typing `500.50` who submitted at
-      // `500.` would have budgeted 500. Off by a fraction of what they meant,
-      // which is the kind of error nobody notices until the invoice.
-      expect(const InspectionDraft(budget: '5.').budgetAmount, isNull);
-      expect(const InspectionDraft(budget: '500.').budgetAmount, isNull);
-      // The completed form is still fine.
-      expect(const InspectionDraft(budget: '500.5').budgetAmount, 500.5);
-    });
-
-    test('rejects infinity', () {
-      expect(const InspectionDraft(budget: 'Infinity').budgetAmount, isNull);
-    });
-  });
-
   group('InspectionDraft.toRow', () {
     const InspectionDraft complete = InspectionDraft(
       carMake: '  Toyota ',
@@ -228,7 +190,6 @@ void main() {
       sellerLocationAddress: ' 12 Nile Street ',
       city: ' Dammam ',
       clientNotes: '  Seller is impatient.  ',
-      budget: ' 500 ',
     );
 
     test('produces exactly the columns the table has', () {
@@ -285,7 +246,10 @@ void main() {
       expect(row['seller_phone'], '+201000000001');
       expect(row['seller_location_address'], '12 Nile Street');
       expect(row['city'], 'Dammam');
-      expect(row['price'], 500.0);
+      // The estimate the buyer was shown and agreed to on the form, not a figure
+      // they chose: the design removed the budget input and this column is NOT
+      // NULL, so it records what the buyer accepted rather than what they wanted.
+      expect(row['price'], 199.0);
       expect(row['client_notes'], 'Seller is impatient.');
     });
 
@@ -298,7 +262,6 @@ void main() {
         sellerLocationAddress: '12 Nile Street',
         city: 'Dammam',
         clientNotes: '   ',
-        budget: '500',
       );
 
       // `''` would pass the length check but then read back as a note the buyer
@@ -355,6 +318,64 @@ void main() {
       // The odometer reading on the report needs the same treatment.
       expect(CostEstimate.format(1500), '1,500 ر.س');
       expect(CostEstimate.amount(516778), '516,778');
+    });
+  });
+
+  group('ReportSectorScoring', () {
+    test('produces the four sectors the A4 prints, in order', () {
+      final List<ReportSection> rows = ReportSectorScoring.rows();
+
+      expect(
+        rows.map((ReportSection s) => s.ordinal),
+        <int>[1, 2, 3, 4],
+      );
+      expect(
+        rows.map((ReportSection s) => s.efficiency),
+        <int>[95, 98, 100, 80],
+      );
+    });
+
+    test('the inspector\'s lower-body text is the only note taken from a person', () {
+      // The entry form collects free text for one sector only. If any other
+      // sector's note changed with it, the form would be writing sentences on a
+      // certified document in a named inspector's name.
+      final List<ReportSection> rows = ReportSectorScoring.rows(
+        suspensionNote: 'المساعد الخلفي الأيسر يفضل تغييره مستقبلاً.',
+      );
+
+      expect(rows[3].notes, 'المساعد الخلفي الأيسر يفضل تغييره مستقبلاً.');
+      expect(rows.take(3).map((ReportSection s) => s.notes), everyElement(isNotNull));
+    });
+
+    test('a blank lower-body note leaves the sector without one', () {
+      // Not an empty string: the column is nullable precisely so "a score and no
+      // remark" is expressible, and a report row with `''` reads back as a
+      // remark nobody wrote.
+      for (final String? blank in <String?>[null, '', '   ']) {
+        expect(ReportSectorScoring.rows(suspensionNote: blank)[3].notes, isNull);
+      }
+    });
+
+    test('the headline is the mean of the sectors, and null without them', () {
+      expect(ReportSectorScoring.summary(ReportSectorScoring.rows()), 93);
+      // 0 is a claim about a car. No sectors means no figure, not a zero one.
+      expect(ReportSectorScoring.summary(<ReportSection>[]), isNull);
+    });
+  });
+
+  group('ReportQualityBand', () {
+    test('uses the same cut-offs as the report table', () {
+      // Pinned in two places in the design — the headline and the efficiency
+      // table's own grade — so the bands are pinned here too. A number that is
+      // `ممتاز` on one row must not read `سليم` in the banner above it.
+      expect(ReportQualityBand.forPercent(100), ReportQualityBand.excellent);
+      expect(ReportQualityBand.forPercent(95), ReportQualityBand.excellent);
+      expect(ReportQualityBand.forPercent(94), ReportQualityBand.sound);
+      expect(ReportQualityBand.forPercent(90), ReportQualityBand.sound);
+      expect(ReportQualityBand.forPercent(89), ReportQualityBand.acceptable);
+      expect(ReportQualityBand.forPercent(75), ReportQualityBand.acceptable);
+      expect(ReportQualityBand.forPercent(74), ReportQualityBand.needsRepair);
+      expect(ReportQualityBand.forPercent(0), ReportQualityBand.needsRepair);
     });
   });
 }

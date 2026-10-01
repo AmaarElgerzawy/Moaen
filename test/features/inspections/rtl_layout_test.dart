@@ -12,6 +12,7 @@ import 'package:moaen/features/inspections/presentation/client_dashboard_page.da
 import 'package:moaen/features/inspections/presentation/create_request_page.dart';
 import 'package:moaen/features/inspections/presentation/my_requests_page.dart';
 import 'package:moaen/features/inspections/presentation/request_detail_page.dart';
+import 'package:moaen/features/inspections/presentation/widgets/design_widgets.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
 import 'package:moaen/features/cities/application/city_controller.dart';
 
@@ -116,6 +117,34 @@ Future<void> _pump(
 /// returns null — a null-check crash that looks like a missing translation.
 AppLocalizations _l10nOf(WidgetTester tester) =>
     AppLocalizations.of(tester.element(find.byType(Scaffold).first));
+
+/// The trailing glyph of the first [SelectField] on screen.
+///
+/// Found by position rather than by its character: the chevron is the second
+/// `Text` in the field's row — the first being the value — and a literal `⌄` in
+/// this file would be a second copy of a character that has no obvious identity
+/// once it has been through a text editor.
+Finder _chevronOfFirstField() => find
+    .descendant(
+      of: find.byType(SelectField).first,
+      matching: find.byType(Text),
+    )
+    .last;
+
+/// The full-width text fields on a create form, in tree order.
+///
+/// Full width only. Half-width fields are a deliberate pair on this form — the
+/// seller's name and phone sit side by side — so the second of a pair belongs on
+/// the *left* half under RTL, and a check that every field hugs one margin would
+/// be wrong for the one field the design puts there.
+List<Rect> _fullWidthFields(WidgetTester tester, Rect page) {
+  final Finder fields = find.byType(DesignTextField);
+  return <Rect>[
+    for (int i = 0; i < fields.evaluate().length; i++)
+      if (tester.getRect(fields.at(i)).width > page.width * 0.8)
+        tester.getRect(fields.at(i)),
+  ];
+}
 
 void main() {
   group('direction resolution', () {
@@ -243,34 +272,34 @@ void main() {
       WidgetTester tester,
     ) async {
       await _pump(tester, _arabic(FakeInspectionRepository(), const CreateRequestPage()));
-      final AppLocalizations l10n = _l10nOf(tester);
-
-      final Rect field = tester.getRect(
-        find.widgetWithText(TextFormField, l10n.fieldCarMake),
-      );
       final Rect page = tester.getRect(find.byType(Scaffold).first);
+
+      // Every full-width field, not just the first: a form whose rows mirror
+      // individually has one field in the wrong place rather than none, and a
+      // single check would pass on whichever one happened to be laid out first.
+      final List<Rect> fields = _fullWidthFields(tester, page);
+      expect(fields, isNotEmpty, reason: 'the form drew no full-width fields');
 
       // A left-aligned field in an Arabic form is the commonest RTL regression,
       // and it is invisible to a widget-tree assertion.
-      expect(
-        page.right - field.right,
-        lessThan(page.width * 0.12),
-        reason: 'the field should hug the right margin, not the left',
-      );
+      for (final Rect field in fields) {
+        expect(
+          page.right - field.right,
+          lessThan(page.width * 0.12),
+          reason: 'the field should hug the right margin, not the left',
+        );
+      }
     });
 
     testWidgets('text fields hug the left edge under LTR', (
       WidgetTester tester,
     ) async {
       await _pump(tester, _english(FakeInspectionRepository(), const CreateRequestPage()));
-      final AppLocalizations l10n = _l10nOf(tester);
-
-      final Rect field = tester.getRect(
-        find.widgetWithText(TextFormField, l10n.fieldCarMake),
-      );
       final Rect page = tester.getRect(find.byType(Scaffold).first);
 
-      expect(page.left - field.left, lessThan(page.width * 0.12));
+      for (final Rect field in _fullWidthFields(tester, page)) {
+        expect(page.left - field.left, lessThan(page.width * 0.12));
+      }
     });
 
     testWidgets('the submit button spans the form width', (
@@ -294,36 +323,99 @@ void main() {
     });
   });
 
-  group('mirrored chrome', () {
-    testWidgets('the details affordance moves to the left under RTL', (
+  group('pinned geometry', () {
+    testWidgets("Screen 2's chevron holds the physical left in both locales", (
+      WidgetTester tester,
+    ) async {
+      // The spec's rule, not a Flutter default: a position in this design is a
+      // place on the *screen*, and the screens pin their own direction, so a
+      // locale change must not move anything. Screen 2 is one of the RTL
+      // containers, so its trailing chevron is on the physical left in Arabic
+      // *and* in English — and a screen that followed the ambient direction would
+      // silently re-lay-out the whole form for an English user.
+      for (final Widget app in <Widget>[
+        _arabic(FakeInspectionRepository(), const CreateRequestPage()),
+        _english(FakeInspectionRepository(), const CreateRequestPage()),
+      ]) {
+        await _pump(tester, app);
+
+        final Rect chevron = tester.getRect(_chevronOfFirstField());
+        final Rect field = tester.getRect(find.byType(SelectField).first);
+
+        expect(
+          chevron.center.dx,
+          lessThan(field.center.dx),
+          reason: "Screen 2's trailing affordance belongs on the physical left",
+        );
+      }
+    });
+
+    testWidgets('the chevron glyph keeps its own direction inside an RTL row', (
+      WidgetTester tester,
+    ) async {
+      await _pump(tester, _arabic(FakeInspectionRepository(), const CreateRequestPage()));
+
+      // Position and shape are separate decisions, and only the first mirrors. The
+      // `⌄` is pinned to LTR inside an RTL row: a glyph with no mirrored form
+      // would otherwise be re-ordered by the bidi algorithm into a mark that
+      // points the wrong way.
+      final RenderParagraph glyph = tester.renderObject<RenderParagraph>(
+        _chevronOfFirstField(),
+      );
+
+      expect(glyph.textDirection, TextDirection.ltr);
+    });
+
+    testWidgets("Screen 1's nav holds the physical left-to-right order", (
+      WidgetTester tester,
+    ) async {
+      for (final Widget app in <Widget>[
+        _arabic(FakeInspectionRepository(), const ClientDashboardPage()),
+        _english(FakeInspectionRepository(), const ClientDashboardPage()),
+      ]) {
+        await _pump(tester, app);
+        final AppLocalizations l10n = _l10nOf(tester);
+
+        // The first destination is at the physical left on an LTR container, so
+        // its label starts left of the last one's.
+        final Rect first = tester.getRect(
+          find.descendant(
+            of: find.byType(AppBottomNav),
+            matching: find.text(l10n.navHome),
+          ),
+        );
+        final Rect last = tester.getRect(
+          find.descendant(
+            of: find.byType(AppBottomNav),
+            matching: find.text(l10n.navAccount),
+          ),
+        );
+
+        expect(
+          first.left,
+          lessThan(last.left),
+          reason: "Screen 1's nav is an LTR container and must not reverse",
+        );
+      }
+    });
+
+    testWidgets('the reference leads the request card under RTL', (
       WidgetTester tester,
     ) async {
       await _pump(tester, _arabic(_withBothStates(), const MyRequestsPage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      final Rect label = tester.getRect(find.text(l10n.actionViewDetails).first);
-      final Rect chevron = tester.getRect(find.byIcon(Icons.chevron_right).first);
+      // The card's own leading child, read against the status pill that follows
+      // it: the design leads with the car and puts the reference in the small
+      // grey line, so the pill is the trailing item.
+      final Rect reference = tester.getRect(find.text('MN-9920'));
+      final Rect status = tester.getRect(find.text(l10n.statusInProgress));
 
-      // The glyph itself is pinned to LTR so it is not mirrored into a
-      // meaningless shape; the *row* is what reverses. So under RTL the trailing
-      // affordance belongs on the left, pointing the way the reader is going.
       expect(
-        chevron.left,
-        lessThan(label.left),
-        reason: 'under RTL the trailing affordance belongs on the left',
+        reference.left,
+        greaterThan(status.left),
+        reason: 'under RTL the row must reverse, putting the reference right-most',
       );
-    });
-
-    testWidgets('the details affordance moves to the right under LTR', (
-      WidgetTester tester,
-    ) async {
-      await _pump(tester, _english(_withBothStates(), const MyRequestsPage()));
-      final AppLocalizations l10n = _l10nOf(tester);
-
-      final Rect label = tester.getRect(find.text(l10n.actionViewDetails).first);
-      final Rect chevron = tester.getRect(find.byIcon(Icons.chevron_right).first);
-
-      expect(chevron.left, greaterThan(label.left));
     });
   });
 
@@ -350,12 +442,20 @@ void main() {
     testWidgets('the dashboard greets by name in Arabic', (
       WidgetTester tester,
     ) async {
-      await _pump(tester, _arabic(_withBothStates(), const ClientDashboardPage()));
+      // Empty, so the dashboard's own empty state is on screen. A repository with
+      // an in-progress request shows the active card instead, and a test asserting
+      // both the greeting and the empty title would be asserting against a screen
+      // that cannot exist.
+      await _pump(tester, _arabic(FakeInspectionRepository(), const ClientDashboardPage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      expect(find.text(l10n.dashboardGreeting(_buyer.fullName)), findsOneWidget);
-      expect(find.text(l10n.dashboardActiveTitle), findsOneWidget);
-      expect(find.textContaining('Hello'), findsNothing);
+      // The design's header greets without a name — the avatar beside it carries
+      // the identity — and the empty state is its own title, so an Arabic screen
+      // with no active request says `لا يوجد طلب نشط` rather than a greeting.
+      expect(find.text(l10n.buyerGreeting), findsOneWidget);
+      expect(find.text(l10n.dashboardNoActiveTitle), findsOneWidget);
+      expect(_arabicScript.hasMatch(l10n.buyerGreeting), isTrue);
+      expect(find.textContaining('Welcome'), findsNothing);
     });
 
     testWidgets('the create form is in Arabic', (
@@ -364,8 +464,8 @@ void main() {
       await _pump(tester, _arabic(FakeInspectionRepository(), const CreateRequestPage()));
       final AppLocalizations l10n = _l10nOf(tester);
 
-      expect(find.text(l10n.createSectionVehicle), findsOneWidget);
-      expect(find.text(l10n.createSectionSeller), findsOneWidget);
+      expect(find.text(l10n.cardCarTitle), findsOneWidget);
+      expect(find.text(l10n.cardSellerTitle), findsOneWidget);
       expect(_arabicScript.hasMatch(l10n.createSubmit), isTrue);
       expect(find.text('Send request'), findsNothing);
     });

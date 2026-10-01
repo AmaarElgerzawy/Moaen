@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
@@ -7,9 +8,16 @@ import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_request.dart';
-import 'widgets/request_widgets.dart';
+import 'accept_request.dart';
+import 'request_detail_page.dart' show StatusPill;
+import 'widgets/design_widgets.dart';
 
 /// One request as the inspector sees it, with the status transition actions.
+///
+/// A pushed screen the reference does not draw, so it is built from the design
+/// system for the reason the buyer's equivalent page is: a Material `AppBar` in
+/// an app that has none anywhere else would be the one place the design's own
+/// language stops.
 ///
 /// The action offered is decided entirely by the request's current status, and
 /// the switch over [InspectionStatus] is exhaustive — adding a status to the
@@ -33,167 +41,158 @@ class InspectorJobDetailPage extends ConsumerWidget {
     final AsyncValue<InspectionRequest> job = ref.watch(inspectorJobProvider(id));
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.actionViewDetails)),
-      body: job.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => Center(child: Text(l10n.errorGeneric)),
-        data: (InspectionRequest request) {
-          final String? stateNote = switch (request.status) {
-            InspectionStatus.pending => l10n.inspectorAvailableNote,
-            InspectionStatus.accepted ||
-            InspectionStatus.inProgress => l10n.inspectorAssignedNote,
-            InspectionStatus.completed ||
-            InspectionStatus.cancelled => null,
-          };
+      body: Column(
+        children: <Widget>[
+          ShellHeader(
+            title: l10n.actionViewDetails,
+            trailing: job.value == null
+                ? null
+                : StatusPill(status: job.value!.status),
+          ),
+          Expanded(
+            child: job.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => Center(
+                child: DesignRetry(
+                  message: l10n.tabLoadError,
+                  actionLabel: l10n.actionRetry,
+                  onRetry: () => ref.invalidate(inspectorJobProvider(id)),
+                ),
+              ),
+              data: (InspectionRequest request) {
+                final String? stateNote = switch (request.status) {
+                  InspectionStatus.pending => l10n.inspectorAvailableNote,
+                  InspectionStatus.accepted ||
+                  InspectionStatus.inProgress => l10n.inspectorAssignedNote,
+                  InspectionStatus.completed ||
+                  InspectionStatus.cancelled => null,
+                };
 
-          return ListView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            children: <Widget>[
-              Text(
-                request.reference,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  // Deliberately no `textDirection` override: "MN-1001" is a
-                  // single left-to-right run, so bidi renders it correctly
-                  // inside the ambient RTL paragraph. Pinned in
-                  // `test/features/inspections/rtl_layout_test.dart`.
-                  fontFeatures: const <FontFeature>[
-                    FontFeature.tabularFigures(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Row(
-                children: <Widget>[StatusChip(status: request.status)],
-              ),
-              if (stateNote case final String note) ...<Widget>[
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  note,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              const SizedBox(height: AppSpacing.lg),
-              DetailCard(
-                title: l10n.createSectionVehicle,
-                children: <Widget>[
-                  DetailRow(label: l10n.fieldCarMake, value: request.carMake),
-                  DetailRow(label: l10n.fieldCarModel, value: request.carModel),
-                  DetailRow(label: l10n.fieldCarYear, value: '${request.carYear}'),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              DetailCard(
-                title: l10n.createSectionSeller,
-                children: <Widget>[
-                  DetailRow(label: l10n.fieldSellerPhone, value: request.sellerPhone),
-                  DetailRow(
-                    label: l10n.fieldSellerAddress,
-                    value: request.sellerLocationAddress,
-                  ),
-                  DetailRow(label: l10n.fieldCity, value: request.city),
-                  if (request.inspectionCenterName case final String name
-                      when name.isNotEmpty)
-                    DetailRow(label: l10n.fieldInspectionCentre, value: name),
-                ],
-              ),
-              if (request.clientNotes case final String notes
-                  when notes.trim().isNotEmpty) ...<Widget>[
-                const SizedBox(height: AppSpacing.lg),
-                DetailCard(
-                  title: l10n.createSectionNotes,
+                return ListView(
+                  padding: const EdgeInsets.all(AppSpacing.inset),
                   children: <Widget>[
-                    Text(notes, style: Theme.of(context).textTheme.bodyMedium),
-                  ],
-                ),
-              ],
-              const SizedBox(height: AppSpacing.lg),
-              DetailCard(
-                title: l10n.costTitle,
-                children: <Widget>[
-                  DetailRow(
-                    label: l10n.costInspection,
-                    value: CostEstimate.format(request.price),
-                  ),
-                  DetailRow(
-                    label: l10n.costTotal,
-                    value: CostEstimate.format(request.price),
-                    emphasise: true,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    l10n.costEstimateNotice,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    Text(request.reference, style: AppText.title(20)),
+                    if (stateNote case final String note) ...<Widget>[
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(note, style: AppText.secondary(12)),
+                    ],
+                    const SizedBox(height: AppSpacing.lg),
+                    TitledCard(
+                      title: l10n.cardCarTitle,
+                      child: Column(
+                        children: <Widget>[
+                          AccountRow(
+                            label: l10n.fieldCarMake,
+                            value: request.carMake,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          AccountRow(
+                            label: l10n.fieldCarModel,
+                            value: request.carModel,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          AccountRow(
+                            label: l10n.fieldCarYear,
+                            value: '${request.carYear}',
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              _ActionSection(
-                status: request.status,
-                busy: action.isLoading,
-                onAccept: () => _confirmAccept(context, ref, request),
-                onStart: () => _start(context, ref, request),
-                onComplete: () => _confirmComplete(context, ref, request),
-              ),
-            ],
-          );
-        },
+                    const SizedBox(height: AppSpacing.md),
+                    TitledCard(
+                      title: l10n.cardSellerTitle,
+                      child: Column(
+                        children: <Widget>[
+                          AccountRow(
+                            label: l10n.fieldSellerPhone,
+                            value: request.sellerPhone,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          AccountRow(
+                            label: l10n.fieldSellerName,
+                            value: request.sellerName ?? l10n.marketOwnerUnknown,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          AccountRow(
+                            label: l10n.fieldCity,
+                            value: request.city,
+                          ),
+                          if (request.inspectionCenterName case final String name
+                              when name.isNotEmpty) ...<Widget>[
+                            const DashedDivider(indent: AppSpacing.sm),
+                            AccountRow(
+                              label: l10n.fieldInspectionCentre,
+                              value: name,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (request.clientNotes case final String notes
+                        when notes.trim().isNotEmpty) ...<Widget>[
+                      const SizedBox(height: AppSpacing.md),
+                      TitledCard(
+                        title: l10n.cardNotesTitle,
+                        child: Text(notes, style: AppText.secondary(13)),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.md),
+                    // The buyer's price, named as what it is: the total the buyer
+                    // was shown when they created the request. There is no
+                    // negotiation in this product, so there is nothing for an
+                    // inspector to quote here — the centre's fee arrives with the
+                    // booking, and the buyer's invoice is where the three lines
+                    // are split apart.
+                    DesignCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            l10n.costTitle,
+                            style: AppText.title(13),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          CostLine(
+                            label: l10n.invoiceInspectorFee,
+                            value: CostEstimate.format(
+                              CostEstimate.defaultInspectorFee,
+                            ),
+                            valueColor: AppColors.green,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          Text(
+                            l10n.costEstimateNotice,
+                            style: AppText.secondary(11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    _ActionSection(
+                      status: request.status,
+                      busy: action.isLoading,
+                      onAccept: () => _confirmAccept(context, ref, request),
+                      onStart: () => _start(context, ref, request),
+                      onComplete: () => _confirmComplete(context, ref, request),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
   /// Accepting is a binding commitment to a buyer, not a toggle, so it is asked
-  /// for before it is done — the same weight as the buyer's cancel.
+  /// for before it is done — the same weight as the buyer's cancel. The question
+  /// and the write live in [confirmAccept], shared with the market.
   Future<void> _confirmAccept(
     BuildContext context,
     WidgetRef ref,
     InspectionRequest request,
-  ) async {
-    final AppLocalizations l10n = AppLocalizations.of(context);
-
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(l10n.acceptConfirmTitle),
-        content: Text(l10n.acceptConfirmBody(request.city)),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.actionKeep),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l10n.actionAccept),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      await ref
-          .read(inspectionRequestControllerProvider.notifier)
-          .accept(request.id);
-    } on InspectionFailure catch (failure) {
-      if (!context.mounted) return;
-      _showMessage(context, failure.message);
-      return;
-    } on Object {
-      if (!context.mounted) return;
-      _showMessage(context, l10n.errorGeneric);
-      return;
-    }
-
-    // `l10n` was read before the dialog, so it is safe to use after the await,
-    // and `context` is only touched under the mounted guards above.
-    if (!context.mounted) return;
-    _showMessage(context, l10n.inspectorAccepted);
-  }
+  ) => confirmAccept(context, ref, request);
 
   /// Starts an accepted job. No dialog — starting does not commit anyone to
   /// anything irreversible, it just begins the work. The write's loading and
@@ -226,6 +225,11 @@ class InspectorJobDetailPage extends ConsumerWidget {
 
   /// Completing makes the buyer's dashboard read "report ready", so it is not
   /// the kind of step an inspector should hit by reflex either.
+  ///
+  /// It also opens the report form, because those are the same moment: the
+  /// reference's Screen 5 is entered from a completed job and nowhere else, and
+  /// an inspector who taps "complete" and is then asked to find the report
+  /// somewhere else has been handed two steps where the product has one.
   Future<void> _confirmComplete(
     BuildContext context,
     WidgetRef ref,
@@ -269,6 +273,10 @@ class InspectorJobDetailPage extends ConsumerWidget {
 
     if (!context.mounted) return;
     _showMessage(context, l10n.inspectorCompleted);
+    await context.pushNamed(
+      'reportEntry',
+      pathParameters: {'id': request.id},
+    );
   }
 
   void _showMessage(BuildContext context, String message) {
@@ -301,57 +309,38 @@ class _ActionSection extends StatelessWidget {
     // default. `busy` disables the action while a transition is in flight — via
     // the shared controller state, so a request that arrives already on another
     // status while one write is pending cannot be double-submitted.
+    //
+    // No icon on any of the three. The design's primary buttons carry their
+    // meaning in the label — `🤝 قبول الطلب وبدء التنسيق`, `📄 اعتماد وإصدار
+    // التقرير` — and a Material `Icon` next to an Arabic label is a second
+    // symbol saying the same thing in a style the reference does not use.
     return switch (status) {
-      InspectionStatus.pending => _PrimaryAction(
-        label: l10n.actionAccept,
-        icon: Icons.check_circle_outline,
-        onPressed: busy ? null : onAccept,
-      ),
-      InspectionStatus.accepted => _PrimaryAction(
-        label: l10n.actionStart,
-        icon: Icons.play_arrow,
-        onPressed: busy ? null : onStart,
-      ),
-      InspectionStatus.inProgress => _PrimaryAction(
-        label: l10n.actionComplete,
-        icon: Icons.flag_outlined,
-        onPressed: busy ? null : onComplete,
-      ),
-      InspectionStatus.completed || InspectionStatus.cancelled => Center(
-        child: Text(
-          l10n.inspectorSettledNote,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+      InspectionStatus.pending => SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: busy ? null : onAccept,
+          child: Text(l10n.actionAccept),
         ),
       ),
-    };
-  }
-}
-
-class _PrimaryAction extends StatelessWidget {
-  const _PrimaryAction({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    // Full width: a single action belongs to the whole request, not to a
-    // column of a form. Pinned in the inspector RTL test.
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        label: Text(label),
+      InspectionStatus.accepted => SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: busy ? null : onStart,
+          child: Text(l10n.actionStart),
+        ),
       ),
-    );
+      InspectionStatus.inProgress => SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: busy ? null : onComplete,
+          child: Text(l10n.actionComplete),
+        ),
+      ),
+      InspectionStatus.completed || InspectionStatus.cancelled => Text(
+        l10n.inspectorSettledNote,
+        textAlign: TextAlign.center,
+        style: AppText.secondary(13),
+      ),
+    };
   }
 }

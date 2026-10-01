@@ -13,6 +13,7 @@ import 'package:moaen/features/inspections/application/inspection_controller.dar
 import 'package:moaen/features/inspections/domain/inspection_request.dart';
 import 'package:moaen/features/inspections/presentation/client_dashboard_page.dart';
 import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
+import 'package:moaen/features/inspections/presentation/widgets/design_widgets.dart';
 import 'package:moaen/features/cities/application/city_controller.dart';
 
 import '../../support/fake_cities.dart';
@@ -108,6 +109,15 @@ Widget _app(FakeAuthRepository repository) => ProviderScope(
     citiesProvider.overrideWith((Ref ref) async => testCities),
   ],
   child: const MoaenApp(),
+);
+
+/// A destination in the shell's bottom bar.
+///
+/// Scoped to the bar because the open tab's label is also its screen's heading,
+/// so a bare `find.text` would match two widgets and `tap` would refuse.
+Finder _navItem(String label) => find.descendant(
+  of: find.byType(AppBottomNav),
+  matching: find.text(label),
 );
 
 void main() {
@@ -235,19 +245,29 @@ void main() {
     testWidgets('signing out returns to the sign-in screen', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(
-        _app(FakeAuthRepository(userId: 'user-1', profile: _profile())),
+      final FakeAuthRepository repository = FakeAuthRepository(
+        userId: 'user-1',
+        profile: _profile(),
       );
+      await tester.pumpWidget(_app(repository));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Sign out'));
+      // The account tab, not the header square. Sign-out is where the design puts
+      // it and it is the one action on the account screen that ends the session,
+      // so a tap in the header that signs you out is a trap in the one place a
+      // finger goes by habit.
+      await tester.tap(_navItem('Account'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign out'));
+      await tester.pumpAndSettle();
+
+      expect(repository.signOutCalls, 1);
       expect(find.byType(SignInPage), findsOneWidget);
       expect(find.byType(RoleLandingPage), findsNothing);
     });
 
-    testWidgets('an inspector sees their service city, a buyer does not', (
+    testWidgets("an inspector's service city is on the profile tab", (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -260,14 +280,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The board greets with the service city even when it is empty.
-      expect(find.textContaining('Riyadh'), findsOneWidget);
+      // Not on the task board: Screen 4 has no service-city line, and an
+      // inspector's own city is not part of a summary of somebody else's job.
+      expect(find.textContaining('Riyadh'), findsNothing);
 
-      await tester.tap(find.text('Profile'));
+      await tester.tap(_navItem('Profile'));
       await tester.pumpAndSettle();
 
-      // The profile tab, like the old role screen, shows the role and the
-      // service city the buyer-facing side of the app shows when hiring.
+      // On the profile tab, like the old role screen, beside the role — because
+      // this is where an inspector has to come to correct it. RLS scopes the
+      // board by this column, so a wrong city is an empty board.
       expect(find.text('Inspector'), findsOneWidget);
       expect(find.text('Riyadh'), findsOneWidget);
     });

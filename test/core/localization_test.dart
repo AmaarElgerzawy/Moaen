@@ -165,10 +165,29 @@ void main() {
         // into it are Arabic.
         'stepAppointmentSub',
         // A URL. Translating a hostname produces a link that goes nowhere.
-        'createHintListing',
+        'createListingHint',
         // A phone-number shape, not a word. `05xxxxxxxx` is the placeholder the
         // design shows; an Arabic transliteration of the x-run would be noise.
-        'createHintSellerPhone',
+        'createSellerPhoneHint',
+        // The market's two location lines. Both are an emoji plus interpolated
+        // values, with no word of their own — `📍 الدمام` is the Arabic rendering
+        // and `📍 Dammam` the English one, and the difference is entirely in
+        // `{city}`. A translatable word would have to be invented, because the
+        // design prints none: the pin *is* the label.
+        'marketLocation',
+        'marketLocationArea',
+        // Three more pure placeholder templates. There is no word in any of them
+        // to translate — the surrounding text that would give them a direction is
+        // the caller's, and the values interpolated in are already Arabic.
+        // `reportScoreWithGrade` is the report's own `95% (ممتاز)`, where the
+        // grade word is a parameter.
+        'reportScoreWithGrade',
+        'centreTimeValue',
+        'accountRatingValue',
+        // `({phone})` on its own: a parenthesised number under a label. The
+        // design prints no word with it, and the Arabic and English documents
+        // differ only in the digits, which are parameters.
+        'inspectorTaskPhoneLabel',
       };
 
       final List<String> untranslated = <String>[
@@ -199,10 +218,25 @@ void main() {
       // same reason they are in `intentionallySame` above, and the two lists are
       // deliberately separate so a key cannot quietly acquire an excuse in one
       // test but not the other.
+      //
+      // The report's six entries are the design's own mixed-script strings. Arabic
+      // technical writing carries the acronym for the thing it names — `OBD-II`,
+      // `DTC`, `ECU` — and the report names the paper size (`A4`), the chassis
+      // number (`VIN`) and the diagram (`Car Blueprint`). Translating any of them
+      // would produce a document no inspector recognises, which is the opposite of
+      // what the report is for. They are listed individually rather than matched
+      // by pattern, so a *new* Latin fragment cannot slip in without a decision.
       const Set<String> latinAllowed = <String>{
         'appName',
-        'createHintListing',
-        'createHintSellerPhone',
+        'createListingHint',
+        'createSellerPhoneHint',
+        'reportObdTitle',
+        'reportObdFaults',
+        'reportObdCodes',
+        'reportObdNotesHint',
+        'reportIssue',
+        'reportTileVin',
+        'reportBlueprintSection',
       };
       final RegExp placeholder = RegExp(r'\{[a-zA-Z]+\}');
       final RegExp latinWord = RegExp(r'[A-Za-z]{2,}');
@@ -246,6 +280,40 @@ void main() {
             '$offenders',
       );
     });
+
+    testWidgets('every key is reachable from the Dart sources', (
+      WidgetTester tester,
+    ) async {
+      // A key nothing reads is a translation nobody will ever look at again, and
+      // the failure mode is quiet: it survives every other check here, it costs
+      // nothing at runtime, and the next person to open the file cannot tell it
+      // apart from a live string. Both ARB files accumulated dozens of them
+      // while the design screens were being built, because a key that stops being
+      // used when a widget is rewritten leaves no trace anywhere.
+      //
+      // The generated localisations are excluded from the search: they contain
+      // every key by construction, so including them would make this check a
+      // tautology. What matters is whether *the app's own code* names the key.
+      //
+      // `lib` only, not `test`. A test names keys legitimately — to find a widget
+      // by its label — but a test cannot make a key live, and letting tests count
+      // as usage is exactly how a key stays in the file after the screen that
+      // rendered it was deleted: the test that asserted on it went with the
+      // screen, or was rewritten, and the key outlived both.
+      final Set<String> reachable = _dartSourceText();
+      final List<String> unreachable = <String>[
+        for (final String key in _readArb('lib/l10n/arb/app_en.arb').keys)
+          if (!key.startsWith('@') && !reachable.contains(key)) key,
+      ];
+
+      expect(
+        unreachable,
+        isEmpty,
+        reason: 'These keys are defined and translated but never read. Delete '
+            'them from both ARB files, or wire the screen that was meant to use '
+            'them. ${unreachable.length} of them.',
+      );
+    });
   });
 
   group('theme tokens', () {
@@ -286,5 +354,76 @@ class Probe {
   MaterialLocalizations get material => MaterialLocalizations.of(context);
 }
 
-Map<String, dynamic> _readArb(String path) =>
-    jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
+/// Reads an ARB file, refusing one that defines the same key twice.
+///
+/// [jsonDecode] does not complain about a repeated key: it keeps the last one and
+/// moves on, and so does `flutter gen-l10n`, because a duplicate is legal JSON.
+/// That silence is the hazard. A stale copy left behind by a rewrite is invisible
+/// until someone edits *that* line, sees no change in the app, and concludes the
+/// key is unused. Both files in this project have carried one.
+///
+/// The check is a raw scan of the top-level lines rather than a walk of the
+/// parsed tree, because a parse cannot see what it threw away. Two-space
+/// indentation is what separates a top-level key from a nested one — a placeholder
+/// named `city` is a legitimate repeat, and only a top-level `city` is a clash.
+/// `@@locale` is the ARB convention rather than a key and is not counted.
+Map<String, dynamic> _readArb(String path) {
+  final String source = File(path).readAsStringSync();
+  final List<String> topLevel = RegExp(
+    r'^ {2}"(@?@?[A-Za-z0-9_]+)":',
+    multiLine: true,
+  )
+      .allMatches(source)
+      .map((RegExpMatch m) => m.group(1)!)
+      .where((String key) => key != '@@locale')
+      .toList();
+
+  final Set<String> seen = <String>{};
+  final List<String> repeated = <String>[
+    for (final String key in topLevel)
+      if (!seen.add(key)) key,
+  ];
+  expect(
+    repeated,
+    isEmpty,
+    reason: 'These keys are defined more than once in $path. JSON keeps the last '
+        'definition and drops the rest, so the earlier one is dead weight that '
+        'still looks editable. Remove it, and check which of the two was meant to '
+        'win.',
+  );
+
+  return jsonDecode(source) as Map<String, dynamic>;
+}
+
+/// Every identifier that appears in the application's own Dart sources, minus the
+/// generated localisations.
+///
+/// A set of words rather than a set of `l10n.` lookups on purpose: `l10n.key`,
+/// `AppLocalizations.of(context).key` and a bare `key` in a `switch` are all real
+/// ways these are reached, and a check that only understood one of them would
+/// report a live string as dead. Over-approximating inside `lib` is safe — the
+/// failure mode is a key that has genuinely been renamed away escaping the check,
+/// which the compiler catches anyway — while under-approximating would report a
+/// live key as dead and train people to ignore the failure.
+Set<String> _dartSourceText() {
+  final Set<String> words = <String>{};
+  final Directory lib = Directory('lib');
+  if (!lib.existsSync()) return words;
+  for (final FileSystemEntity entity in lib.listSync(recursive: true)) {
+    if (entity is! File || !entity.path.endsWith('.dart')) continue;
+    // The generated file is a mirror of the ARB, so every key is in it by
+    // definition and it would satisfy every lookup.
+    if (entity.path.contains(
+      '${Platform.pathSeparator}l10n${Platform.pathSeparator}gen'
+      '${Platform.pathSeparator}',
+    )) {
+      continue;
+    }
+    words.addAll(
+      RegExp('[A-Za-z0-9_]+')
+          .allMatches(entity.readAsStringSync())
+          .map((RegExpMatch m) => m.group(0)!),
+    );
+  }
+  return words;
+}

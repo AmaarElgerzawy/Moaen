@@ -108,44 +108,39 @@ class InspectionDraft {
     this.carMake = '',
     this.carModel = '',
     this.carYear = '',
+    this.sellerName = '',
     this.sellerPhone = '',
     this.sellerLocationAddress = '',
     this.city = '',
     this.clientNotes = '',
-    this.budget = '',
+    this.plateNumber = '',
+    this.listingUrl = '',
+    this.clientName = '',
   });
 
   final String carMake;
   final String carModel;
   final String carYear;
+
+  /// The design's seller name. Optional to the database and required by the
+  /// form's label, which is the design's business and not the schema's.
+  final String sellerName;
+
   final String sellerPhone;
   final String sellerLocationAddress;
   final String city;
   final String clientNotes;
+  final String plateNumber;
+  final String listingUrl;
 
-  /// Kept as text, not a number.
+  /// The buyer's display name at the moment the request was filed.
   ///
-  /// A `TextEditingController` holding a double cannot represent the
-  /// intermediate states of typing: an empty field, a lone `-`, or `500.` while
-  /// the trailing digit is still being entered. Parsing happens on submit, into
-  /// the nullable [budgetAmount].
-  final String budget;
-
-  /// The budget as a number, or null when it is absent or unparseable.
-  double? get budgetAmount {
-    final String input = budget.trim();
-    // A trailing bare decimal point is rejected even though `double.tryParse`
-    // accepts it and returns 5.0 for "5.". Someone typing `500.` is mid-way
-    // through `500.50`, and accepting the partial value silently turns their
-    // budget into a different number from the one they meant. The cost of
-    // refusing is one more keystroke; the cost of accepting is a quote the
-    // buyer did not agree to.
-    if (input.endsWith('.')) return null;
-
-    final double? parsed = double.tryParse(input);
-    if (parsed == null || !parsed.isFinite || parsed < 0) return null;
-    return parsed;
-  }
+  /// Passed in rather than read from a profile inside [toRow], because the
+  /// domain has no session and the profile may have been renamed since. The
+  /// inspector sees this string on the job board, so it is the name the two
+  /// parties transacted under — see [InspectionRequest.clientName] for why it is
+  /// a copy rather than a join.
+  final String clientName;
 
   int? get year {
     final int? parsed = int.tryParse(carYear.trim());
@@ -158,41 +153,65 @@ class InspectionDraft {
 
   /// The row this draft would create.
   ///
-  /// Requires a non-null [year] and [budgetAmount]; the caller validates first,
-  /// which is why both are non-null assertions here rather than silently
-  /// defaulting to something the database would reject.
+  /// Requires a non-null [year]; the caller validates first, which is why that is
+  /// a non-null assertion here rather than a silent default the database would
+  /// reject.
   Map<String, dynamic> toRow(String clientId) => <String, dynamic>{
     'client_id': clientId,
     'car_make': carMake.trim(),
     'car_model': carModel.trim(),
     'car_year': year!,
     'seller_phone': sellerPhone.trim(),
-    'seller_location_address': sellerLocationAddress.trim(),
     'city': city.trim(),
-    'price': budgetAmount!,
-    // Empty means NULL rather than an empty string: `check (char_length(...) <=
-    // 1000)` passes either way, but '' would show up in a report as a note the
-    // buyer wrote, which is not the same as no note.
+    // The column is NOT NULL, and the design has replaced the buyer's typed
+    // budget with a fixed structure: the inspector's fee and the platform's are
+    // known now, and the centre's arrives later. So the row records the estimate
+    // the buyer was shown and accepted on the form — which is a fact about what
+    // they agreed to, not a number they chose. It is deliberately *not* summed
+    // with anything: the buyer's ceiling is the whole total, not a fourth line.
+    'price': CostEstimate.standard.total,
+
+    // Everything below is omitted rather than sent empty. `seller_location_
+    // address` carries a `char_length between 3 and 400` check, so an empty
+    // string would be rejected by the database even though the column is
+    // nullable — '' is a value, not an absence. The rest have no such check, and
+    // NULL is what the screens read as "not recorded yet".
+    if (sellerName.trim().isNotEmpty) 'seller_name': sellerName.trim(),
+    if (plateNumber.trim().isNotEmpty) 'plate_number': plateNumber.trim(),
+    if (listingUrl.trim().isNotEmpty) 'listing_url': listingUrl.trim(),
+    if (sellerLocationAddress.trim().length >= 3)
+      'seller_location_address': sellerLocationAddress.trim(),
     if (clientNotes.trim().isNotEmpty) 'client_notes': clientNotes.trim(),
+
+    // Frozen at filing for the inspector's job board. Omitted when unknown,
+    // like every other optional column above: a profile with no name is not a
+    // request with the name "null".
+    if (clientName.trim().isNotEmpty) 'client_name': clientName.trim(),
   };
 
   InspectionDraft copyWith({
     String? carMake,
     String? carModel,
     String? carYear,
+    String? sellerName,
     String? sellerPhone,
     String? sellerLocationAddress,
     String? city,
     String? clientNotes,
-    String? budget,
+    String? plateNumber,
+    String? listingUrl,
+    String? clientName,
   }) => InspectionDraft(
     carMake: carMake ?? this.carMake,
     carModel: carModel ?? this.carModel,
     carYear: carYear ?? this.carYear,
+    sellerName: sellerName ?? this.sellerName,
     sellerPhone: sellerPhone ?? this.sellerPhone,
     sellerLocationAddress: sellerLocationAddress ?? this.sellerLocationAddress,
     city: city ?? this.city,
     clientNotes: clientNotes ?? this.clientNotes,
-    budget: budget ?? this.budget,
+    plateNumber: plateNumber ?? this.plateNumber,
+    listingUrl: listingUrl ?? this.listingUrl,
+    clientName: clientName ?? this.clientName,
   );
 }

@@ -7,9 +7,15 @@ import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_request.dart';
-import 'widgets/request_widgets.dart';
+import 'widgets/design_widgets.dart';
 
 /// One request in full, with the cancel action.
+///
+/// A pushed screen the reference does not draw, so it is built from the design
+/// system rather than left as Material: a `DesignCard` per group, the buyer's
+/// own status pill, and the same dark header every other pushed screen opens
+/// with. It also has no bottom bar, for the reason Screens 2, 3 and 5 have none —
+/// a screen you reached by tapping something is a screen you go back from.
 ///
 /// The cancel action lives here rather than on the card because cancelling is
 /// not reversible and touches a real transaction. A buyer should have to have
@@ -22,7 +28,9 @@ class RequestDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final AsyncValue<void> action = ref.watch(inspectionRequestControllerProvider);
+    final AsyncValue<void> action = ref.watch(
+      inspectionRequestControllerProvider,
+    );
 
     // Reading through the list provider rather than fetching by id: the detail
     // page is always reached from a list that already has the row, so this is a
@@ -32,107 +40,221 @@ class RequestDetailPage extends ConsumerWidget {
       myRequestsProvider,
     );
 
+    // Resolved once, above the header, because both the header and the body need
+    // it and two independent lookups of the same id are two chances to disagree.
+    // Null while loading and when the id is genuinely absent; the body says so
+    // and the header simply shows no pill rather than guessing a status.
+    final InspectionRequest? match = switch (requests.value) {
+      final List<InspectionRequest> all => all
+          .where((InspectionRequest r) => r.id == id)
+          .firstOrNull,
+      _ => null,
+    };
+
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.actionViewDetails)),
-      body: requests.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => Center(child: Text(l10n.errorGeneric)),
-        data: (List<InspectionRequest> all) {
-          final InspectionRequest? match = all
-              .where((InspectionRequest r) => r.id == id)
-              .firstOrNull;
-
-          // A missing id is a navigation bug, not a data state: the row was on
-          // screen a moment ago. Saying so plainly beats rendering an empty
-          // screen that looks like a deleted request.
-          if (match == null) return Center(child: Text(l10n.errorGeneric));
-
-          return ListView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            children: <Widget>[
-              Text(
-                match.reference,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  // See the note in `client_dashboard_page.dart`: no
-                  // `textDirection` override, so the number inherits the
-                  // ambient direction and lands on the correct edge.
-                  fontFeatures: const <FontFeature>[
-                    FontFeature.tabularFigures(),
-                  ],
+      body: Column(
+        children: <Widget>[
+          ShellHeader(
+            title: l10n.actionViewDetails,
+            // The reference number is the one identifier a buyer is given, and
+            // the only one they are asked to read out to the centre. It is the
+            // header's trailing pill rather than its title because the title is
+            // the *kind* of screen, and a row of two numbers at the top of a
+            // detail page is the layout the design uses for a row of one number
+            // plus a pill.
+            trailing: match == null ? null : StatusPill(status: match.status),
+          ),
+          Expanded(
+            child: requests.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => Center(
+                child: DesignRetry(
+                  message: l10n.tabLoadError,
+                  actionLabel: l10n.actionRetry,
+                  onRetry: () => ref.invalidate(myRequestsProvider),
                 ),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              StatusChip(status: match.status),
-              const SizedBox(height: AppSpacing.lg),
-              DetailCard(
-                title: l10n.createSectionVehicle,
-                children: <Widget>[
-                  DetailRow(label: l10n.fieldCarMake, value: match.carMake),
-                  DetailRow(label: l10n.fieldCarModel, value: match.carModel),
-                  DetailRow(label: l10n.fieldCarYear, value: '${match.carYear}'),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              DetailCard(
-                title: l10n.createSectionSeller,
-                children: <Widget>[
-                  DetailRow(label: l10n.fieldSellerPhone, value: match.sellerPhone),
-                  DetailRow(
-                    label: l10n.fieldSellerAddress,
-                    value: match.sellerLocationAddress,
-                  ),
-                  DetailRow(label: l10n.fieldCity, value: match.city),
-                  if (match.inspectionCenterName case final String name
-                      when name.isNotEmpty)
-                    DetailRow(label: l10n.fieldInspectionCentre, value: name),
-                ],
-              ),
-              if (match.clientNotes case final String notes
-                  when notes.trim().isNotEmpty) ...<Widget>[
-                const SizedBox(height: AppSpacing.lg),
-                DetailCard(
-                  title: l10n.createSectionNotes,
-                  children: <Widget>[
-                    Text(notes, style: Theme.of(context).textTheme.bodyMedium),
-                  ],
-                ),
-              ],
-              const SizedBox(height: AppSpacing.lg),
-              DetailCard(
-                title: l10n.costTitle,
-                children: <Widget>[
-                  DetailRow(
-                    label: l10n.costInspection,
-                    value: CostEstimate.format(match.price),
-                  ),
-                  DetailRow(label: l10n.costTotal, value: CostEstimate.format(
-                    match.price,
-                  ), emphasise: true),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    l10n.costEstimateNotice,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+              data: (List<InspectionRequest> _) {
+                // A missing id is a navigation bug, not a data state: the row was
+                // on screen a moment ago. Saying so plainly beats rendering an
+                // empty screen that looks like a deleted request.
+                if (match == null) {
+                  return Center(
+                    child: DesignEmpty(
+                      title: l10n.errorGeneric,
+                      body: l10n.actionViewDetails,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              if (match.status.isOpen)
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.error,
-                  ),
-                  onPressed: action.isLoading
-                      ? null
-                      : () => _confirmCancel(context, ref, match),
-                  icon: const Icon(Icons.close),
-                  label: Text(l10n.actionCancelRequest),
-                ),
-            ],
-          );
-        },
+                  );
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.all(AppSpacing.inset),
+                  children: <Widget>[
+                    Text(
+                      match.reference,
+                      style: AppText.title(20),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    TitledCard(
+                      title: l10n.cardCarTitle,
+                      child: Column(
+                        children: <Widget>[
+                          AccountRow(
+                            label: l10n.fieldCarMake,
+                            value: match.carMake,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          AccountRow(
+                            label: l10n.fieldCarModel,
+                            value: match.carModel,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          AccountRow(
+                            label: l10n.fieldCarYear,
+                            value: '${match.carYear}',
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    TitledCard(
+                      title: l10n.cardSellerTitle,
+                      child: Column(
+                        children: <Widget>[
+                          AccountRow(
+                            label: l10n.fieldSellerPhone,
+                            value: match.sellerPhone,
+                          ),
+                          const DashedDivider(indent: AppSpacing.sm),
+                          AccountRow(
+                            label: l10n.fieldCity,
+                            value: match.city,
+                          ),
+                          if (match.inspectionCenterName case final String name
+                              when name.isNotEmpty) ...<Widget>[
+                            const DashedDivider(indent: AppSpacing.sm),
+                            AccountRow(
+                              label: l10n.fieldInspectionCentre,
+                              value: name,
+                            ),
+                          ],
+                          if (match.appointmentAt case final DateTime at) ...<Widget>[
+                            const DashedDivider(indent: AppSpacing.sm),
+                            AccountRow(
+                              label: l10n.buyerNoticeDay,
+                              value: '${at.day}/${at.month}/${at.year}',
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (match.clientNotes case final String notes
+                        when notes.trim().isNotEmpty) ...<Widget>[
+                      const SizedBox(height: AppSpacing.md),
+                      TitledCard(
+                        title: l10n.cardNotesTitle,
+                        child: Text(notes, style: AppText.secondary(13)),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.md),
+                    // The estimate, not the buyer's invoice: this card says what
+                    // the number is, where the buyer's says what they approved.
+                    // The centre's fee is unknown until an inspector books, so
+                    // this box carries the same pending line Screen 2's does.
+                    CostBox(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            l10n.costTitle,
+                            style: AppText.title(13, color: AppColors.greenDeep),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          CostLine(
+                            label: l10n.createCostCentre,
+                            value: match.centerFee == null
+                                ? l10n.invoiceCentrePending
+                                : CostEstimate.format(match.centerFee!),
+                          ),
+                          CostLine(
+                            label: l10n.invoiceInspectorFee,
+                            value: CostEstimate.format(
+                              CostEstimate.defaultInspectorFee,
+                            ),
+                          ),
+                          CostLine(
+                            label: l10n.invoicePlatformFee,
+                            value: CostEstimate.format(
+                              CostEstimate.defaultPlatformFee,
+                            ),
+                          ),
+                          const DashedDivider(
+                            color: AppColors.successBorder,
+                          ),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  l10n.createCostTotalLabel,
+                                  style: AppText.title(
+                                    12,
+                                    color: AppColors.greenDeep,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Flexible(
+                                flex: 3,
+                                child: Text(
+                                  // The total of *this* request, not the create
+                                  // screen's standard: the centre fee is the one
+                                  // line that has moved since the request was
+                                  // made, and a total that ignored it would be a
+                                  // quote for a different transaction.
+                                  CostEstimate.format(
+                                    CostEstimate(
+                                      centerFee: match.centerFee,
+                                    ).total,
+                                  ),
+                                  textAlign: TextAlign.end,
+                                  style: AppText.title(
+                                    12,
+                                    color: AppColors.green,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    if (match.status.isOpen)
+                      OutlinedButton(
+                        // The reference has no destructive action of its own, so
+                        // this takes the design's red — the same token the live
+                        // indicator uses — as an outline rather than a fill. A
+                        // filled red button on a screen the reference does not
+                        // draw would be inventing an emphasis it never asked for.
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.live,
+                          side: const BorderSide(color: AppColors.live),
+                          minimumSize: const Size.fromHeight(
+                            AppTheme.buttonHeight,
+                          ),
+                        ),
+                        onPressed: action.isLoading
+                            ? null
+                            : () => _confirmCancel(context, ref, match),
+                        child: Text(l10n.actionCancelRequest),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -189,5 +311,34 @@ class RequestDetailPage extends ConsumerWidget {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+/// The status pill, written once so two screens cannot word the same status
+/// differently.
+///
+/// Deliberately tolerant of being given a request that is not on screen: the
+/// header is built from the same list as the body, and the two reads happen in
+/// the same frame, so the id either resolves in both or in neither. The `orElse`
+/// above therefore cannot return a wrong status, only fail — and a failure here
+/// would throw during a build, so the lookup is made safe instead.
+class StatusPill extends StatelessWidget {
+  const StatusPill({required this.status, super.key});
+
+  final InspectionStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return AppPill(
+      label: switch (status) {
+        InspectionStatus.pending => l10n.statusPending,
+        InspectionStatus.accepted => l10n.statusAccepted,
+        InspectionStatus.inProgress => l10n.statusInProgress,
+        InspectionStatus.completed => l10n.statusCompleted,
+        InspectionStatus.cancelled => l10n.statusCancelled,
+      },
+      fontSize: 11,
+    );
   }
 }
