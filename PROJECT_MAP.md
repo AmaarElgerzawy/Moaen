@@ -203,11 +203,15 @@ supabase/
                                   tables, and the columns that replace the
                                   seven superseded 1-5 ratings
   migrations/0008_seed_centres.sql  the approved Saudi centres
-  migrations/0009_approval_and_report_flow.sql  **authored, unapplied** — the
-                                  buyer's approval, the frozen `client_name` /
-                                  `inspector_name`, and the trigger rules that
-                                  stop a buyer advancing their own inspection.
-                                  Every statement is re-runnable.
+  migrations/0009_approval_and_report_flow.sql  the buyer's approval, the
+                                  frozen `client_name` / `inspector_name`,
+                                  and the trigger rules that stop a buyer
+                                  advancing their own inspection. Every
+                                  statement is re-runnable, and it ends by
+                                  reloading PostgREST's schema cache — the
+                                  app reads the table through that snapshot,
+                                  so a migration that applies cleanly can
+                                  still leave the app seeing a 1990s schema.
   config.toml
 test/
   core/localization_test.dart     RTL default, fallback, translation coverage
@@ -238,7 +242,7 @@ Verified by querying the catalog of the live project after `supabase db push`:
 
 | Property | Expected | Live |
 |---|---|---|
-| Migrations applied | 0001–0008 | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008. **0009 is authored and pending** — verified by probing the live PostgREST schema cache: `car_inspections.client_name` and `.inspector_name` both return `PGRST204 column … does not exist`, while every 0006–0008 object resolves. Until it is applied, request creation fails outright, because `InspectionDraft.toRow` writes `client_name` on every row. |
+| Migrations applied | 0001–0009 | 0001–0009, all nine. 0009 confirmed applied and confirmed *visible to PostgREST*: `car_inspections.client_name` and `.inspector_name` return 401 (RLS refusing anon) rather than 400/`42703` ("does not exist"), and a deliberately bogus column returns the 400 — which is what distinguishes "the column is missing from the table" from "the column is missing from PostgREST's in-memory snapshot". 0009 also carries the `pgrst` reload notification, because a migration can apply perfectly and still leave the app failing on a stale server-side cache. |
 | Tables | 6 | 6 (+ `inspector_profiles` view) |
 | Primary keys | 6 | 6 |
 | Foreign keys | 5 among app tables | 6 — the sixth is `users.id → auth.users.id` |
