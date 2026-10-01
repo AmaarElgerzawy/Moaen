@@ -35,6 +35,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart';
 
+import '../support/rls_harness.dart';
+
 // ---------------------------------------------------------------------------
 // Fixture identities. Written as literals rather than generated so that a
 // failing assertion can be reproduced by hand in the SQL editor.
@@ -81,7 +83,7 @@ void main() {
             'row level security policies against a live database.'
       : null;
 
-  final _RlsHarness harness = _RlsHarness();
+  final RlsHarness harness = RlsHarness(fixtures: installFixtureIdentities);
 
   // Every test below goes through this wrapper rather than `test` directly, so
   // the skip reason is stated once instead of at twenty call sites where a
@@ -521,28 +523,18 @@ void main() {
   });
 }
 
-/// Drives one connection impersonating each persona in turn.
+/// Provisions the fixture identities and rows.
 ///
-/// The transaction is opened once and rolled back on dispose, so the fixtures
-/// are never committed to the project.
-class _RlsHarness {
-  Connection? _connection;
-
-  /// The session under test. Non-null between [connect] and [dispose].
-  Connection get db => _connection!;
-
-  Future<void> connect(String url) async {
-    _connection = await Connection.openFromUrl(url);
-    // No auto-commit: the entire suite runs inside this one transaction.
-    await db.execute('begin');
-    await _installFixtures();
-  }
-
-  /// Provisions the fixture users by inserting into auth.users, so that
-  /// handle_new_user() does the work and the provisioning path is exercised
-  /// alongside the policies.
-  Future<void> _installFixtures() async {
-    await db.execute('''
+/// Run inside the harness's transaction, so it rolls back with everything else.
+/// The users are inserted into `auth.users` rather than `public.users` so that
+/// `handle_new_user()` does the work and the provisioning path is exercised
+/// alongside the policies it feeds.
+///
+/// Every column of every fixture is stated explicitly, including the ones a
+/// default would fill in. A fixture that inherits a default is a fixture whose
+/// shape can change under the suite when a migration edits that default.
+Future<void> installFixtureIdentities(Connection db) async {
+  await db.execute('''
       insert into auth.users (id, email, raw_user_meta_data)
       values
         ('$clientA', 'client_a@test.moaen',
@@ -601,107 +593,4 @@ class _RlsHarness {
         ('$paymentOnAssignedJob', '$jobAssignedToCairo', 900, 'escrow',
          'cash_manual', 'tx-fixture-0001')
     ''');
-  }
-
-  /// Becomes [uid] as an ordinary signed-in user.
-  Future<void> asUser(String uid) => asRole('authenticated', uid: uid);
-
-  /// Becomes [role], optionally as [uid].
-  ///
-  /// The claims are set before the role, matching the order PostgREST uses.
-  Future<void> asRole(String role, {String? uid}) async {
-    final String claims = uid == null ? '' : '{"sub":"$uid","role":"$role"}';
-    await db.execute(
-      "select set_config('request.jwt.claims', \$1, true)",
-      parameters: [claims],
-    );
-    await db.execute(
-      "select set_config('role', \$1, true)",
-      parameters: [role],
-    );
-  }
-
-  /// Returns to the session owner with no claims.
-  ///
-  /// Clearing the claims matters as much as clearing the role: both settings
-  /// are transaction-local, so a JWT left in place would keep auth.uid()
-  /// non-null for the rest of the transaction and quietly change what the
-  /// guard triggers in 0001 do.
-  Future<void> asSuperuser() async {
-    await db.execute("select set_config('request.jwt.claims', '', true)");
-    await db.execute("select set_config('role', 'none', true)");
-  }
-
-  /// First column of the first row, or null when the query returns no rows.
-  Future<Object?> scalar(
-    String sql, [
-    List<Object?> parameters = const [],
-  ]) async {
-    final Result result = await db.execute(sql, parameters: parameters);
-    return result.isEmpty ? null : result.first[0];
-  }
-
-  /// Number of rows the query returns.
-  ///
-  /// Deliberately row-based rather than a `select count(*)` wrapper: the
-  /// assertions read as "this user sees their own inspections", and wrapping
-  /// every statement in a subquery would obscure which table is being counted.
-  /// Counting a result that RLS already filtered keeps the test honest, because
-  /// the database, not the test, decides what is visible.
-  Future<int> count(String sql, [List<Object?> parameters = const []]) async {
-    final Result result = await db.execute(sql, parameters: parameters);
-    return result.length;
-  }
-
-  /// Asserts that [sql] is refused with SQLSTATE [sqlState].
-  ///
-  /// A statement error inside an explicit transaction aborts the whole
-  /// transaction, so the body has to run between a savepoint and its
-  /// rollback. ROLLBACK TO SAVEPOINT has to be the very next statement: an
-  /// aborted transaction rejects everything else, which is an easy mistake to
-  /// make here and produces a confusing 25P02 instead of the real result.
-  Future<void> expectDenied(
-    String sql, {
-    List<Object?> parameters = const [],
-    required String sqlState,
-    required String because,
-  }) async {
-    await db.execute('savepoint expect_denied');
-    ServerException? caught;
-    try {
-      await db.execute(sql, parameters: parameters);
-    } on ServerException catch (error) {
-      caught = error;
-    }
-    await db.execute('rollback to savepoint expect_denied');
-    // Privileges are restored before the savepoint is released, so a later
-    // failure cannot leave the suite stuck impersonating someone.
-    await asSuperuser();
-    await db.execute('release savepoint expect_denied');
-
-    expect(
-      caught,
-      isNotNull,
-      reason: 'expected the statement to be refused: $because',
-    );
-    expect(
-      caught!.code,
-      sqlState,
-      reason: 'refused, but for the wrong reason: $because',
-    );
-  }
-
-  Future<void> dispose() async {
-    final Connection? connection = _connection;
-    _connection = null;
-    if (connection == null) return;
-    // Roll back before closing so a hard failure in one test cannot leave the
-    // fixtures committed to a shared project.
-    try {
-      await connection.execute('rollback');
-    } on Object {
-      // The connection may already be unusable; closing is what matters.
-    }
-    await connection.close(force: true);
-  }
 }

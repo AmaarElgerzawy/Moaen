@@ -108,6 +108,8 @@ Three environment facts that cost real time and are not discoverable from the co
 | O3 | An inspector sees pending jobs in their city only | `rls_policies_test.dart` — 5 tests | **done, live** |
 | O4 | A client cannot forge completion or a released payment | `rls_policies_test.dart` — 7 tests | **done, live** |
 | O5 | Logging is non-blocking and bounded | `app_logger_test.dart` — 9 tests | **done** |
+| O6 | A buyer can approve an accepted inspection, and nothing the widening gives them | `approval_flow_test.dart` — 19 tests | **written, not yet executed** |
+| O7 | A report can be authored without the seven superseded 1-5 ratings | `approval_flow_test.dart` | **written, not yet executed** |
 
 Every O2–O4 assertion has been executed against the live project, not merely
 reviewed. That distinction mattered: the `SECURITY DEFINER` recursion fix and the
@@ -223,6 +225,7 @@ test/
   support/fake_auth_repository.dart  records updateCity so a profile edit is assertable
   support/fake_cities.dart          the shared four-city picker fixture
   integration/rls_policies_test.dart   O2/O3/O4, against the live project
+  integration/approval_flow_test.dart  O6/O7, the 0009 approval and report rules
 tool/
   dart_defines.local.json         gitignored, optional client override (D6)
   apply_migration.dart            applies a migration file in one transaction (D12)
@@ -335,6 +338,49 @@ equality of one stored value.
    live: the suite's `anon has no access to any table` test still passes, and
    `information_schema.role_table_grants` shows exactly one `anon` SELECT in
    `public` — on `cities`.*
+
+### The 0009 rules are written but not yet executed
+
+`test/integration/approval_flow_test.dart` — **19 tests, all skipped** because
+`MOAEN_DB_URL` is unset on this machine. They exist because migration 0009 widened
+a policy and then re-tightened it in a trigger, and the two halves had never been
+run against each other. The suite is deliberately built as pairs: the write that
+must succeed, then the write that must be refused, on neighbouring rows.
+
+Covered, in the order the migration does its work:
+
+- the buyer's approval on an `accepted` inspection, which 0002's policy refused
+  outright — so the button on Screen 1 could not have worked;
+- the buyer still being able to amend and to cancel their own request;
+- four refusals the widened policy would otherwise have permitted: accepting your
+  own request, reporting your own inspection as started, assigning yourself as the
+  inspector, and writing the inspector's name;
+- `client_name` and `inspector_name` frozen once an inspector is committed, and
+  an inspector naming themselves on the job they claim;
+- a report authored with all seven superseded ratings null, which 0001's NOT NULL
+  constraints made impossible;
+- a sector carrying a score and no note, which is what the design's report entry
+  actually collects;
+- attachments being append-only, enforced at the privilege layer.
+
+Two things it records rather than asserts as desirable:
+
+- **`report_media_insert_assigned_inspector` does not do what it is named.** Its
+  `with check` is `is_report_participant(report_id)`, which is true for the *buyer*
+  of that inspection, so a buyer can currently add photographs to the attachment
+  list of the document handed to them as evidence. The test is named `FINDING:` and
+  asserts the current behaviour. Fixing it is a product decision — a buyer
+  disputing a finding has a fair argument for wanting to attach their own
+  photograph — and if it comes out "inspector only" the test flips to
+  `expectDenied` and migration 0010 narrows the check.
+- **`expectDenied` hands the session back to the superuser**, so a second refusal
+  in the same test has to re-impersonate. Documented on the method, because getting
+  it wrong produces a test that asserts the superuser's privileges.
+
+The impersonation harness was extracted to `test/support/rls_harness.dart` so both
+suites share one implementation. The 0002 suite's fixtures are order-dependent
+(one test accepts a job and a later one depends on it), so the 0009 suite was given
+its own six inspections rather than being appended to it.
 
 ### How the RLS policies are actually proven
 
@@ -530,7 +576,7 @@ Only B3 stands between the project and M5.
 | **M0** | Toolchain | `flutter --version` reports 3.47.5 / Dart 3.13.4 | **met** |
 | **M1** | Scaffold | `flutter analyze` 0 issues; `flutter test` green; `flutter build apk --debug` produces an APK | **met** — debug APK 229.6 MB (94 MB of it is the uncompressed debug snapshot) |
 | **M2** | Schema | Migrations apply cleanly; 5 tables, FKs, PKs, transition and role-guard triggers present | **met** — applied and inspected in the catalog |
-| **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 28/28 live |
+| **M3** | RLS | Cross-tenant reads return 0 rows; city scoping holds; forged `released` payment denied | **met** — 28/28 live; a further 19 tests for migration 0009's rules are written but unexecuted |
 | **M4** | App wiring | Logger, sign-in and router-guard tests pass | **met** — 158 unit/widget + 27 RLS + 4 live auth |
 | **M5** | Smoke | Boots on an emulator, signs in, reaches the role screen, writes a log file | **blocked by B3** — the sign-in half is now proven against live GoTrue, so only the on-device part is outstanding |
 | **M6** | Client request flow | Dashboard, create form, list and detail render in both locales; create/cancel reach the database | **met** — but see B3: it has never run on a device |
@@ -541,7 +587,7 @@ Only B3 stands between the project and M5.
 ```powershell
 # 1. database — the password must be percent-encoded; note the region and port.
 $env:MOAEN_DB_URL = "postgresql://postgres.ybglobvcqgkfclvkjkri:<pw>@aws-0-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require"
-flutter test test\integration\rls_policies_test.dart
+flutter test test\integration\rls_policies_test.dart test\integration\approval_flow_test.dart
 
 # 2. live auth — same credential. Signs up through real GoTrue, then cleans up.
 flutter test test\integration\auth_live_test.dart
