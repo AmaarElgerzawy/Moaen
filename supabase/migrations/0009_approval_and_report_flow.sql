@@ -242,3 +242,27 @@ begin
   return new;
 end;
 $$;
+
+-- ============================================================================
+-- 5. Tell PostgREST the schema changed
+-- ============================================================================
+--
+-- Not belt-and-braces; without it the file can apply perfectly and the app still
+-- fail. PostgREST does not read the table definition per query: it holds a parsed
+-- snapshot of the public schema in memory and validates every request against it,
+-- which is what makes PGRST204 — "Could not find the 'client_name' column ... in
+-- the schema cache" — a statement about the cache and not about the table.
+--
+-- Supabase installs a `pgrst_watch` event trigger that is meant to send this
+-- notification automatically after DDL, and normally does. It is not
+-- unconditional, though: the notification is a `NOTIFY`, it is delivered at
+-- transaction commit, and a migration applied as `postgres` outside the trigger's
+-- conditions can leave the snapshot stale. The symptom is that the column is
+-- genuinely in `information_schema.columns`, every direct SQL query works, and the
+-- app still gets PGRST204 — with no amount of app-side retrying making progress,
+-- because the cache is server state.
+--
+-- So it is stated here rather than left to a trigger's discretion. A `NOTIFY` with
+-- no listener is a no-op, which makes this safe on a self-hosted project or a
+-- local stack where nothing is listening for `pgrst`.
+notify pgrst, 'reload schema';
