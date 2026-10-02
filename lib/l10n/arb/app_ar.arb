@@ -533,5 +533,39 @@
   "reportGearboxRough": "فيه ملاحظات",
   "reportEntryUnavailable": "هذا الطلب لا يمكن الوصول إليه، أو لم يعد متاحاً.",
   "reportRepairHint": "800 ر.س",
-  "reportConditionExcellent": "ممتازة"
+  "reportConditionExcellent": "ممتازة",
+
+  "cardCentreTitle": "📍 مركز الفحص",
+  "customCentreIntro": "يتولى المعاين اختيار المركز المعتمد. يمكنك هنا تحديد مركز آخر تفضّله.",
+  "customCentreChoiceApproved": "مركز معتمد",
+  "customCentreChoiceCustom": "مركز آخر",
+  "customCentreNameLabel": "اسم المركز:",
+  "customCentreNameHint": "مثال: مركز الأمانة للفحص",
+  "customCentreLocationLabel": "موقع المركز على الخريطة:",
+  "customCentreLocationEmpty": "اضغط لتحديد الموقع",
+  "customCentreLocationRequired": "حدّد موقع المركز على الخريطة.",
+
+  "locationSheetTitle": "تحديد الموقع",
+  "locationSheetHint": "اضغط على الخريطة لتحديد موقع المركز.",
+
+  "customCentreSheetTitle": "مركز فحص غير مدرج",
+  "customCentreSheetOption": "مركز آخر (غير مدرج)",
+  "customCentreSheetIntro": "يُستخدم هذا الخيار عندما لا يوجد مركز معتمد في مدينتك.",
+  "customCentreFeeLabel": "رسوم الفحص:",
+  "customCentreFeeHint": "مثال: 300",
+  "customCentreFeeInvalid": "أدخل رسوم فحص صحيحة للمركز.",
+  "customCentreProofLabel": "صورة إثبات المركز (رخصة تجارية أو واجهة المحل):",
+  "customCentreProofAdd": "+ إضافة صورة",
+  "customCentreProofRequired": "أرفق صورة تثبت أن المركز ورشة فحص فعلية.",
+  "customCentreIncomplete": "أكمل اسم المركز وموقعه ورسومه وصورة الإثبات.",
+
+  "customCentreBuyerIncomplete": "حدّد اسم مركزك وموقعه على الخريطة.",
+
+  "customCentreBookedValue": "{name} (غير مدرج)",
+  "@customCentreBookedValue": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "customCentreProofAttached": "تم إرفاق صورة الإثبات"
 }

@@ -1,3 +1,5 @@
+import 'custom_centre.dart';
+
 /// The lifecycle of a request, mirroring the `inspection_status` enum.
 ///
 /// [InspectionStatus.fromName] falls back to [pending] rather than throwing.
@@ -46,6 +48,11 @@ enum InspectionStatus {
 /// Immutable, and constructed only through [fromRow], so the only place that has
 /// to understand PostgREST's decoding quirks is the factory. See [_asDouble] for
 /// the one that actually bites.
+///
+/// [customCentre] is the one field that is not about the car. It is [CustomCentre]
+/// rather than an [InspectionCentre] because an unlisted centre has no id, no city
+/// of its own and no approved fee — it is a name and a point on the map attached
+/// to this one request.
 class InspectionRequest {
   const InspectionRequest({
     required this.id,
@@ -74,6 +81,7 @@ class InspectionRequest {
     this.appointmentAt,
     this.centerFee,
     this.clientApprovedAt,
+    this.customCentre,
   });
 
   final String id;
@@ -172,6 +180,19 @@ class InspectionRequest {
   /// When the buyer approved the invoice. Null until they press the button.
   final DateTime? clientApprovedAt;
 
+  /// A centre outside the approved list, when one was named.
+  ///
+  /// Null on every inspection that happens at a centre from `inspection_centres`,
+  /// which is the common case. When it is set it is a *suggestion*, not a booking:
+  /// the booking is [inspectionCenterName], and an inspector booking this centre
+  /// copies its name there so the report, the buyer's invoice and the board all
+  /// read the same string without each of them knowing this column exists.
+  final CustomCentre? customCentre;
+
+  /// True when someone has named an unlisted centre, whether the buyer suggested
+  /// it or the inspector found it.
+  bool get hasCustomCentre => customCentre != null;
+
   final String? clientNotes;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -223,8 +244,29 @@ class InspectionRequest {
       appointmentAt: _asDate(row['appointment_at']),
       clientApprovedAt: _asDate(row['client_approved_at']),
       clientNotes: row['client_notes'] as String?,
+      customCentre: _customCentreOf(row),
       createdAt: DateTime.parse(row['created_at'] as String),
       updatedAt: DateTime.parse(row['updated_at'] as String),
+    );
+  }
+
+  /// The custom centre on this row, or null when there is none.
+  ///
+  /// Built from the triple rather than from whichever columns happen to be present,
+  /// so a row that somehow violates migration 0010's shape constraint reads as "no
+  /// custom centre" instead of as a centre at (0, 0) in the Gulf of Guinea. The
+  /// database refuses to store that shape, so this is defence in depth rather than
+  /// a case that occurs.
+  static CustomCentre? _customCentreOf(Map<String, dynamic> row) {
+    final String? name = row['custom_centre_name'] as String?;
+    final num? lat = row['custom_centre_lat'] as num?;
+    final num? lng = row['custom_centre_lng'] as num?;
+    if (name == null || lat == null || lng == null) return null;
+    return CustomCentre(
+      name: name,
+      latitude: lat.toDouble(),
+      longitude: lng.toDouble(),
+      proofPhotoPath: row['custom_centre_proof_photo_url'] as String? ?? '',
     );
   }
 
@@ -266,6 +308,7 @@ class InspectionRequest {
     int? odometerKm,
     DateTime? createdAt,
     DateTime? updatedAt,
+    CustomCentre? customCentre,
   }) => InspectionRequest(
     id: id ?? this.id,
     referenceNo: referenceNo ?? this.referenceNo,
@@ -293,6 +336,7 @@ class InspectionRequest {
     odometerKm: odometerKm ?? this.odometerKm,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    customCentre: customCentre ?? this.customCentre,
   );
 }
 

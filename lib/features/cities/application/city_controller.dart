@@ -14,3 +14,16 @@ final cityRepositoryProvider = Provider<CityRepository>(
 final citiesProvider = FutureProvider<List<City>>(
   (Ref ref) => ref.watch(cityRepositoryProvider).listCities(),
 );
+
+/// Where one city is, for the custom-centre map picker to open on.
+///
+/// Null is the normal answer for a city with no coordinate and also for a failed
+/// lookup, because both mean the same thing to the only caller: open the map on
+/// the default view instead. Keyed by `name_ar` rather than looked up inside the
+/// city list, so this costs one small query only when a picker actually opens and
+/// does not lengthen the sign-up form's read.
+final cityCoordinatesProvider =
+    FutureProvider.family<CityCoordinates?, String>(
+      (Ref ref, String nameAr) =>
+          ref.watch(cityRepositoryProvider).coordinatesOf(nameAr),
+    );

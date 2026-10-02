@@ -22,6 +22,11 @@ import 'inspection_repository.dart';
 /// entry form cannot offer to delete a photo that is already attached to a
 /// report — a report's evidence trail has to be stable, which is the whole reason
 /// the policy exists.
+///
+/// [uploadCentreProof] and [signedProofUrl] write the same bucket for a custom
+/// centre's proof photograph. They are the one place this class writes an object
+/// with no `report_media` row behind it, and they are here for the path convention
+/// and the bucket's policies rather than because a custom centre is report media.
 class MediaRepository {
   MediaRepository(this._client);
 
@@ -224,5 +229,84 @@ class MediaRepository {
       '.heic' => 'image/heic',
       _ => 'image/jpeg',
     };
+  }
+
+  // --- Custom-centre proof ----------------------------------------------------
+  //
+  // These two touch the same bucket and obey the same storage policies as a
+  // report's photographs — the object's first path segment must be the inspection
+  // id, only the assigned inspector may write, and both parties may read — so they
+  // live here rather than behind a second repository with a second copy of the
+  // path convention.
+  //
+  // What differs is that there is no `report_media` row: the proof is a single
+  // object whose path goes straight into `car_inspections.custom_centre_proof_
+  // photo_url`, because a custom centre exists before there is a report to attach
+  // it to. That column is therefore the only index of the object, and nothing in
+  // the database removes it — see [MediaRepository]'s doc on why there is no
+  // remove().
+
+  /// Uploads [file] as the proof that the inspection centre is a real shop, and
+  /// returns the object path to store in `custom_centre_proof_photo_url`.
+  ///
+  /// Returns a path rather than a [ReportMedia] because there is no row to read
+  /// back, and a path rather than a signed URL because the bucket is private: a
+  /// URL written into a column would expire and leave the column pointing at
+  /// nothing.
+  ///
+  /// Object first. The caller writes the path in the same booking that records the
+  /// centre, and an object with no path pointing at it is removed by the bucket's
+  /// orphan cleanup rather than being resurrected later — whereas a path pointing
+  /// at an object that never uploaded would be a certified booking citing a
+  /// photograph that does not exist.
+  Future<String> uploadCentreProof({
+    required String inspectionId,
+    required XFile file,
+  }) async {
+    final String path = '$inspectionId/${objectNameFor(file.name)}';
+    try {
+      final Uint8List bytes = await file.readAsBytes();
+      await _client.storage.from(bucket).uploadBinary(
+        path,
+        bytes,
+        fileOptions: FileOptions(
+          contentType: contentTypeFor(path),
+          upsert: false,
+        ),
+      );
+      return path;
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.error('centre proof upload failed', error, stackTrace, {
+        'inspection_id': inspectionId,
+      });
+      throw const InspectionFailure(
+        'Could not upload the centre photo. Please try again.',
+      );
+    }
+  }
+
+  /// A URL for the proof at [path] that works for the next hour, or empty when one
+  /// could not be minted.
+  ///
+  /// Empty rather than throwing for the same reason [listForReport] degrades a
+  /// single photo rather than failing the whole list: a booking the inspector has
+  /// already confirmed must not appear to have failed because its evidence could
+  /// not be loaded, and the caller falls back to showing that a photo is attached
+  /// without showing it.
+  Future<String> signedProofUrl(String path) async {
+    if (path.isEmpty) return '';
+    try {
+      return await _client.storage
+          .from(bucket)
+          .createSignedUrl(path, signedUrlLifetime.inSeconds);
+    } on Object {
+      AppLogger.instance.error(
+        'centre proof sign failed',
+        null,
+        StackTrace.current,
+        {'path': path},
+      );
+      return '';
+    }
   }
 }

@@ -530,6 +530,39 @@
   "reportRepairHint": "800 SAR",
   "reportConditionExcellent": "Excellent",
 
+  "cardCentreTitle": "📍 Inspection centre",
+  "customCentreIntro": "The inspector chooses the approved centre. You can name a different one you would prefer here.",
+  "customCentreChoiceApproved": "Approved centre",
+  "customCentreChoiceCustom": "Another centre",
+  "customCentreNameLabel": "Centre name:",
+  "customCentreNameHint": "e.g. Al-Amana Inspection Centre",
+  "customCentreLocationLabel": "Centre location on the map:",
+  "customCentreLocationEmpty": "Tap to set the location",
+  "customCentreLocationRequired": "Set the centre's location on the map.",
+
+  "locationSheetTitle": "Set the location",
+  "locationSheetHint": "Tap the map to place the centre's pin.",
+
+  "customCentreSheetTitle": "Unlisted inspection centre",
+  "customCentreSheetOption": "Another centre (not listed)",
+  "customCentreSheetIntro": "Use this when your city has no approved centre.",
+  "customCentreFeeLabel": "Inspection fee:",
+  "customCentreFeeHint": "e.g. 300",
+  "customCentreFeeInvalid": "Enter a valid inspection fee for the centre.",
+  "customCentreProofLabel": "Proof the centre is a real shop (trade licence or storefront):",
+  "customCentreProofAdd": "+ Add photo",
+  "customCentreProofRequired": "Attach a photo showing the centre is an actual inspection shop.",
+  "customCentreIncomplete": "Complete the centre's name, location, fee and proof photo.",
+
+  "customCentreBuyerIncomplete": "Set your centre's name and its location on the map.",
+  "customCentreBookedValue": "{name} (not listed)",
+  "@customCentreBookedValue": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "customCentreProofAttached": "Proof photo attached",
+
   "stepCoordinationPending": "Waiting for the inspector to choose a centre",
   "stepAppointmentPending": "Set once the inspector confirms and you approve",
   "invoiceApproved": "✅ You approved the offer and the invoice",

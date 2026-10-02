@@ -1,4 +1,5 @@
 import 'package:moaen/features/inspections/data/inspection_repository.dart';
+import 'package:moaen/features/inspections/domain/custom_centre.dart';
 import 'package:moaen/features/inspections/domain/inspection_draft.dart';
 import 'package:moaen/features/inspections/domain/inspection_request.dart';
 
@@ -197,12 +198,21 @@ class FakeInspectionRepository extends InspectionRepository {
     required String centreName,
     required double fee,
     required DateTime appointmentAt,
+    CustomCentre? customCentre,
   }) async {
     bookedIds.add(id);
     final Object? writeFailure = bookFailure;
     if (writeFailure != null) throw writeFailure;
     final InspectionFailure? f = failure;
     if (f != null) throw f;
+
+    // Recorded so a test can assert on what the booking form asked for. The
+    // custom centre is not written back onto the request the way a real one would
+    // be: this fake models the catalogue booking, and folding the custom centre in
+    // here would mean a test asserting `centreName` was really asserting on a
+    // second, unrelated write.
+    lastBookedCentre = customCentre;
+    lastBookedFee = fee;
 
     final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
     if (index == -1) return;
@@ -212,6 +222,16 @@ class FakeInspectionRepository extends InspectionRepository {
       appointmentAt: appointmentAt,
     );
   }
+
+  /// The custom centre passed to the most recent [book], or null if the last
+  /// booking was at an approved centre.
+  CustomCentre? lastBookedCentre;
+
+  /// The fee passed to the most recent [book].
+  ///
+  /// Recorded separately from the request's `centerFee` so a test can tell the
+  /// figure the inspector typed from the one the fake then echoed back.
+  double? lastBookedFee;
 
   @override
   Future<void> approveInvoice(String id) async {
@@ -297,6 +317,7 @@ InspectionRequest buildRequest({
   int? odometerKm,
   DateTime? appointmentAt,
   DateTime? clientApprovedAt,
+  CustomCentre? customCentre,
 }) => InspectionRequest(
   id: id,
   referenceNo: referenceNo,
@@ -321,6 +342,7 @@ InspectionRequest buildRequest({
   odometerKm: odometerKm,
   appointmentAt: appointmentAt,
   clientApprovedAt: clientApprovedAt,
+  customCentre: customCentre,
   createdAt: DateTime.utc(2026, 1, 1),
   updatedAt: DateTime.utc(2026, 1, 1),
 );

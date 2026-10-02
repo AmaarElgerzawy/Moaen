@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/logging/app_logger.dart';
+import '../domain/custom_centre.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_request.dart';
 
@@ -133,11 +134,24 @@ class InspectionRepository {
   /// re-reading it at write time would let a centre's price change between the
   /// two and put a figure on the buyer's invoice that the dropdown never showed
   /// them. The buyer approves what the inspector saw.
+  ///
+  /// [customCentre] is the unlisted-centre case, and it is optional because a
+  /// booking at an approved centre records none of it. When it is given, the four
+  /// custom columns are written in the same UPDATE as the booking rather than
+  /// before it: two writes would leave a window where the request is booked at a
+  /// centre whose coordinates are still the ones the buyer suggested.
+  ///
+  /// The fee is the inspector's own figure for an unlisted centre, not a price read
+  /// from the catalogue — there is no catalogue row behind it. It lands in
+  /// `center_fee` alongside an approved centre's fee and is frozen by the
+  /// transition trigger in the same way, so the buyer approves a number that has a
+  /// named source.
   Future<void> book(
     String id, {
     required String centreName,
     required double fee,
     required DateTime appointmentAt,
+    CustomCentre? customCentre,
   }) async {
     try {
       await _client
@@ -146,6 +160,7 @@ class InspectionRepository {
             'inspection_center_name': centreName,
             'center_fee': fee,
             'appointment_at': appointmentAt.toUtc().toIso8601String(),
+            if (customCentre != null) ...customCentre.toColumns(),
           })
           .eq('id', id)
           .select()

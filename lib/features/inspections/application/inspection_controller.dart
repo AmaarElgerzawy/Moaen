@@ -5,9 +5,11 @@ import '../../auth/auth_controller.dart';
 import '../../auth/user_profile.dart';
 import '../data/centre_repository.dart';
 import '../data/inspection_repository.dart';
+import '../data/location_surface.dart';
 import '../data/media_repository.dart';
 import '../data/photo_picker.dart';
 import '../data/report_repository.dart';
+import '../domain/custom_centre.dart';
 import '../domain/inspection_centre.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_report.dart';
@@ -231,17 +233,42 @@ class InspectionRequestController extends Notifier<AsyncValue<void>> {
   /// centre name, a fee and a time from this write, so those are the rows that
   /// must refetch. Invalidating the inspector's own indexes too would be harmless
   /// but would make the booking form re-read a list the inspector is looking at.
+  ///
+  /// [customCentre] is the unlisted-centre case and [proofPhoto] its evidence.
+  /// They are separate parameters because they are separate facts: the name and
+  /// location are the booking, while the photograph is the inspector standing
+  /// behind the claim that a shop is real. The name may be one the buyer suggested;
+  /// the photograph is always the inspector's own, and migration 0010's trigger
+  /// refuses to let anyone else write it.
   Future<void> book(
     String id, {
     required String centreName,
     required double fee,
     required DateTime appointmentAt,
+    CustomCentre? customCentre,
+    XFile? proofPhoto,
   }) async {
     state = const AsyncLoading();
     try {
-      await ref
-          .read(inspectionRepositoryProvider)
-          .book(id, centreName: centreName, fee: fee, appointmentAt: appointmentAt);
+      // Uploaded here rather than by the form, so the object and the booking land
+      // as one outcome: the inspector gets a single failure for the whole booking
+      // instead of a confirmed appointment citing a photograph that never
+      // uploaded. An approved centre skips the upload — it has no proof to supply,
+      // and `customCentre` is null.
+      final CustomCentre? booked = proofPhoto == null || customCentre == null
+          ? customCentre
+          : customCentre.copyWith(
+              proofPhotoPath: await ref
+                  .read(mediaRepositoryProvider)
+                  .uploadCentreProof(inspectionId: id, file: proofPhoto),
+            );
+      await ref.read(inspectionRepositoryProvider).book(
+            id,
+            centreName: centreName,
+            fee: fee,
+            appointmentAt: appointmentAt,
+            customCentre: booked,
+          );
       state = const AsyncData(null);
       ref.invalidate(myRequestsProvider);
       ref.invalidate(dashboardRequestProvider);
@@ -297,6 +324,17 @@ final centresInCityProvider = FutureProvider.family<List<InspectionCentre>, Stri
     ref.watch(authControllerProvider);
     return ref.watch(centreRepositoryProvider).listForCity(city);
   },
+);
+
+/// The map a custom centre's location is picked on, behind a provider.
+///
+/// The same seam [photoPickerProvider] is, for the same reason: `flutter_map`
+/// fetches tiles over HTTP and `flutter test` has no HTTP stack, so a test
+/// rendering the real map fails on tile requests that have nothing to do with what
+/// it is asserting. Override this with a builder that reports a fixed point and the
+/// whole pick-and-record path runs with no network.
+final locationSurfaceProvider = Provider<LocationSurfaceBuilder>(
+  (Ref ref) => systemLocationSurface,
 );
 
 // ---------------------------------------------------------------------------

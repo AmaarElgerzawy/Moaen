@@ -1,3 +1,4 @@
+import 'custom_centre.dart';
 import 'inspection_request.dart';
 
 /// What the buyer is asked to pay, broken down.
@@ -116,6 +117,7 @@ class InspectionDraft {
     this.plateNumber = '',
     this.listingUrl = '',
     this.clientName = '',
+    this.customCentre,
   });
 
   final String carMake;
@@ -141,6 +143,20 @@ class InspectionDraft {
   /// parties transacted under — see [InspectionRequest.clientName] for why it is
   /// a copy rather than a join.
   final String clientName;
+
+  /// An unlisted centre the buyer would prefer, or null to leave the choice to the
+  /// inspector.
+  ///
+  /// Null is the default and the common case: the design books a centre from the
+  /// approved list, and a buyer who has no preference should not have to think
+  /// about one. It is never required, and a request with no custom centre is a
+  /// completely ordinary request.
+  ///
+  /// The buyer holds no proof photograph. The proof is the inspector's assertion
+  /// that a place is a real inspection shop, so it arrives at booking time and
+  /// migration 0010's trigger refuses to let a buyer write it — the field exists on
+  /// [CustomCentre] for that reason and is simply left empty here.
+  final CustomCentre? customCentre;
 
   int? get year {
     final int? parsed = int.tryParse(carYear.trim());
@@ -187,6 +203,12 @@ class InspectionDraft {
     // like every other optional column above: a profile with no name is not a
     // request with the name "null".
     if (clientName.trim().isNotEmpty) 'client_name': clientName.trim(),
+
+    // The buyer's preferred centre, when they named one. Written from the same
+    // method the inspector's booking uses so the four columns can never be spelled
+    // two different ways — and spread into the map rather than nested under a key,
+    // because this is the row itself, not a JSON column.
+    if (customCentre case final CustomCentre centre) ...centre.toColumns(),
   };
 
   InspectionDraft copyWith({
@@ -201,6 +223,7 @@ class InspectionDraft {
     String? plateNumber,
     String? listingUrl,
     String? clientName,
+    CustomCentre? customCentre,
   }) => InspectionDraft(
     carMake: carMake ?? this.carMake,
     carModel: carModel ?? this.carModel,
@@ -213,5 +236,6 @@ class InspectionDraft {
     plateNumber: plateNumber ?? this.plateNumber,
     listingUrl: listingUrl ?? this.listingUrl,
     clientName: clientName ?? this.clientName,
+    customCentre: customCentre ?? this.customCentre,
   );
 }

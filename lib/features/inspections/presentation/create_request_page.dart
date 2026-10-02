@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../cities/application/city_controller.dart';
+import '../../cities/data/city_repository.dart';
 import '../../cities/presentation/city_picker.dart';
 import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
+import '../data/location_surface.dart';
+import '../domain/custom_centre.dart';
 import '../domain/inspection_draft.dart';
 import 'widgets/design_widgets.dart';
+import 'widgets/location_picker.dart';
 
 /// Screen 2: the create-request form.
 ///
@@ -49,11 +55,36 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
   final TextEditingController _sellerName = TextEditingController();
   final TextEditingController _sellerPhone = TextEditingController();
   final TextEditingController _notes = TextEditingController();
+  final TextEditingController _centreName = TextEditingController();
 
   /// The chosen canonical city — a value, not a controller, because it comes from
   /// the [CityPicker] sheet rather than from a cursor. Null until the buyer makes
   /// a choice, which is what the validator flags.
   String? _city;
+
+  /// Whether the buyer is naming a centre of their own.
+  ///
+  /// False is the default and the common case, and it is what makes this card
+  /// additive: a buyer with no preference never sees the extra fields, and the
+  /// request they file is indistinguishable from one filed before this card
+  /// existed. True switches the card from one line to three.
+  bool _wantsCustomCentre = false;
+
+  /// The point the buyer dropped on the map, or null.
+  ///
+  /// Held beside [_wantsCustomCentre] rather than replacing it, so switching back
+  /// to an approved centre and forward again keeps the name and the pin. Losing
+  /// them on a toggle would make the choice expensive to try, and this is a
+  /// preference — the least costly thing for a buyer to change their mind about.
+  LatLng? _centrePoint;
+
+  /// Whether the buyer has pressed submit at least once.
+  ///
+  /// The card's completeness error is only useful once they have tried to send the
+  /// form, which is the same contract every `Form` validator in this page works
+  /// under — errors appear on submit, not on arrival. Without it the card would
+  /// greet every buyer with an error about a preference they have not expressed.
+  bool _submitAttempted = false;
 
   @override
   void dispose() {
@@ -69,6 +100,7 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
       _sellerName,
       _sellerPhone,
       _notes,
+      _centreName,
     ]) {
       c.dispose();
     }
@@ -85,7 +117,32 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
     sellerPhone: _sellerPhone.text,
     city: _city ?? '',
     clientNotes: _notes.text,
+    customCentre: _customCentre,
   );
+
+  /// The buyer's suggestion, or null when they have not named one or named one
+  /// incompletely.
+  ///
+  /// Null rather than a half-built [CustomCentre] when either field is missing,
+  /// because migration 0010's shape constraint refuses a name without a location
+  /// and the form's job is to keep the database from ever seeing one. Building it
+  /// from whatever is typed would turn a half-finished card into a rejected
+  /// request; this way it is simply not a suggestion yet, and the card says which
+  /// half is missing.
+  CustomCentre? get _customCentre {
+    if (!_wantsCustomCentre) return null;
+    final String name = _centreName.text.trim();
+    final LatLng? point = _centrePoint;
+    if (point == null) return null;
+    final CustomCentre candidate = CustomCentre(
+      name: name,
+      latitude: point.latitude,
+      longitude: point.longitude,
+    );
+    // `isComplete` covers the name's length bounds as well as the coordinate
+    // ranges, so a one-character name is not sent to be rejected by a constraint.
+    return candidate.isComplete ? candidate : null;
+  }
 
   /// The three fixed fees, before any inspector is involved.
   ///
@@ -96,7 +153,26 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
   CostEstimate get _estimate => CostEstimate.standard;
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final bool formValid = _formKey.currentState?.validate() ?? false;
+
+    // The custom centre is not a `Form` field — its three halves are a choice, a
+    // name and a map, and only one of those is a text field — so the form cannot
+    // flag an incomplete one and it is checked here.
+    //
+    // It blocks the submit rather than being quietly dropped, because the buyer
+    // chose "Another centre" and a request that filed with no centre named would be
+    // them believing they had expressed a preference they had not. Preferring no
+    // centre is the *absence* of [_wantsCustomCentre]; that must stay a valid
+    // request, so only the true branch above is a failure.
+    final bool centreValid = !_wantsCustomCentre || _customCentre != null;
+
+    if (!formValid || !centreValid) {
+      // Setting this makes the card show what is missing. It has to be a rebuild,
+      // because `validate()` on its own only marks text fields dirty and would
+      // leave the card's error invisible.
+      if (mounted) setState(() => _submitAttempted = true);
+      return;
+    }
 
     // The year's field validator has already rejected anything unparseable, and it
     // reads this same getter, so reaching here with a null year would mean the two
@@ -178,6 +254,25 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
                       phone: _sellerPhone,
                     ),
                     _NotesCard(notes: _notes),
+                    _CustomCentreCard(
+                      wantsCustom: _wantsCustomCentre,
+                      name: _centreName,
+                      point: _centrePoint,
+                      city: _city ?? '',
+                      onToggle: (bool value) => setState(
+                        () => _wantsCustomCentre = value,
+                      ),
+                      onPoint: (LatLng value) =>
+                          setState(() => _centrePoint = value),
+                      // Shown only after a submit that failed, and only while the
+                      // buyer has actually chosen the custom option. Reporting an
+                      // incomplete card before they have touched it would put an
+                      // error on a form nobody has filled in yet.
+                      error: _submitAttempted && _wantsCustomCentre &&
+                              _customCentre == null
+                          ? l10n.customCentreBuyerIncomplete
+                          : null,
+                    ),
                     _CostBox(estimate: _estimate),
                     const SizedBox(height: AppSpacing.lg),
                     FilledButton(
@@ -558,6 +653,144 @@ class _NotesCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// `📍 مركز الفحص` — the buyer's optional centre suggestion.
+///
+/// **Not part of the approved design.** The reference's create-request screen is
+/// four cards and a button, and none of them is a centre: in the design the
+/// inspector picks the centre during the 48-hour coordination window. This card
+/// exists because a city with no approved centre leaves that window with nothing to
+/// pick, and because a buyer who knows a good shop should be able to say so. It is
+/// additive and skippable — a buyer who touches nothing here files exactly the
+/// request they filed before.
+///
+/// The card is collapsed to a single explanatory line until [wantsCustom] is true,
+/// so the common case costs one line rather than three fields.
+class _CustomCentreCard extends ConsumerWidget {
+  const _CustomCentreCard({
+    required this.wantsCustom,
+    required this.name,
+    required this.point,
+    required this.city,
+    required this.onToggle,
+    required this.onPoint,
+    required this.error,
+  });
+
+  final bool wantsCustom;
+
+  final TextEditingController name;
+  final LatLng? point;
+
+  /// The request's city, used to centre the map. Empty until the buyer has chosen.
+  final String city;
+
+  final ValueChanged<bool> onToggle;
+  final ValueChanged<LatLng> onPoint;
+
+  /// Shown after a failed submit, while the card is incomplete.
+  final String? error;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: TitledCard(
+        title: l10n.cardCentreTitle,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              l10n.customCentreIntro,
+              style: AppText.secondary(13),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            SegmentedChoice(
+              options: <String>[
+                l10n.customCentreChoiceApproved,
+                l10n.customCentreChoiceCustom,
+              ],
+              selectedIndex: wantsCustom ? 1 : 0,
+              onChanged: (int index) => onToggle(index == 1),
+            ),
+            // `AnimatedSize` would be smoother, and is left out: the card's height
+            // change is small and a submit button that slides under a buyer's thumb
+            // mid-tap is a worse outcome than an instant reveal. The reference has no
+            // such transition anywhere, so an abrupt one is also the more faithful
+            // read of a design that switches instantly.
+            if (wantsCustom) ...<Widget>[
+              const SizedBox(height: AppSpacing.md),
+              FieldLabel(l10n.customCentreNameLabel),
+              DesignTextField(
+                controller: name,
+                hintText: l10n.customCentreNameHint,
+                // Capped at the same 120 the database enforces, so the field
+                // cannot accumulate a name that a constraint would later reject.
+                maxLength: 120,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              _CityAnchoredLocationField(
+                value: point,
+                city: city,
+                onChanged: onPoint,
+              ),
+            ],
+            if (error != null) ...<Widget>[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                error!,
+                style: AppText.secondary(13, color: AppColors.live),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// [LocationField] anchored on the request's own city.
+///
+/// The anchor is a `FutureProvider` read rather than a value the page already has,
+/// because the city is a free-text string on the request and its coordinate lives
+/// on a different row of `cities`. Watching it here keeps that lookup out of
+/// `_CreateRequestPageState`, which has no reason to know the map opens on
+/// coordinates.
+///
+/// While it loads, and if it fails, the field opens on [kFallbackCentre]. A city
+/// with no coordinate is a row someone added by hand rather than an error, and the
+/// map still works — it just opens somewhere the person has to pan from.
+class _CityAnchoredLocationField extends ConsumerWidget {
+  const _CityAnchoredLocationField({
+    required this.value,
+    required this.city,
+    required this.onChanged,
+  });
+
+  final LatLng? value;
+  final String city;
+  final ValueChanged<LatLng> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watched on an empty city too, which resolves to null immediately without a
+    // query: `coordinatesOf('')` matches no row. That keeps the provider tree
+    // uniform instead of switching between a watched and an unwatched read.
+    final CityCoordinates? anchor = ref.watch(
+      cityCoordinatesProvider(city),
+    ).value;
+
+    return LocationField(
+      value: value,
+      initial: anchor == null
+          ? kFallbackCentre
+          : LatLng(anchor.latitude, anchor.longitude),
+      onChanged: onChanged,
     );
   }
 }

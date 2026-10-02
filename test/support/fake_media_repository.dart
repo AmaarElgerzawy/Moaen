@@ -69,6 +69,35 @@ class FakeMediaRepository extends MediaRepository {
     ]);
     return const <ReportMedia>[];
   }
+
+  /// A custom centre's proof photograph, recorded rather than stored.
+  ///
+  /// Overridden because the real method talks to the storage API, and a booking
+  /// test that reached it would fail on a network call that has nothing to do with
+  /// what it is asserting — or, worse, be silently swallowed by the booking box's
+  /// `on Object` and read as "the booking did not happen".
+  @override
+  Future<String> uploadCentreProof({
+    required String inspectionId,
+    required XFile file,
+  }) async {
+    final Object? failure = proofFailure;
+    if (failure != null) throw failure;
+    proofUploads.add(inspectionId);
+    proofNames.add(file.name);
+    return '$inspectionId/${MediaRepository.objectNameFor(file.name)}';
+  }
+
+  /// Inspection ids a proof photograph was uploaded against, in order.
+  final List<String> proofUploads = <String>[];
+
+  /// The file names of those uploads, in the same order as [proofUploads].
+  final List<String> proofNames = <String>[];
+
+  /// When set, [uploadCentreProof] throws it — an upload that fails on a phone
+  /// with no signal, which must leave the booking unwritten rather than booked at
+  /// a centre whose proof does not exist.
+  Object? proofFailure;
 }
 
 /// A [ReportRepository] with no network behind it.

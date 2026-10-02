@@ -305,7 +305,19 @@ void main() {
     testWidgets('the submit button spans the form width', (
       WidgetTester tester,
     ) async {
-      await _pump(tester, _arabic(FakeInspectionRepository(), const CreateRequestPage()));
+      // Taller than the file's default, because the form is a lazy `ListView` and
+      // the submit button is its last child. The centre card pushes it past 1600,
+      // and an unbuilt child is not a widget the finder can measure — the failure
+      // reads as "no submit button exists" rather than as "the surface was short".
+      //
+      // This is a surface change, not a workaround: on a real phone the button was
+      // already below the fold before the centre card, because the form has always
+      // scrolled. What the assertion checks is the button's width when built.
+      await _pump(
+        tester,
+        _arabic(FakeInspectionRepository(), const CreateRequestPage()),
+        size: const Size(420, 2000),
+      );
       final AppLocalizations l10n = _l10nOf(tester);
 
       final Rect button = tester.getRect(

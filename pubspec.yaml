@@ -43,6 +43,12 @@ dependencies:
   path_provider: 2.1.6
   image_picker: ^1.2.3
 
+  # The custom-centre location picker. `latlong2` is not optional here: flutter_map
+  # takes its points as LatLng and nothing else, and it is the only place in the
+  # app that needs one. See AppMapTiles for why the tile URL is configurable.
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

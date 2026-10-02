@@ -86,6 +86,21 @@ const String jobOfOtherBuyer = 'a2a2a2a2-0000-4000-8000-000000000005';
 /// the whole reason the fixtures carry one inspection per state.
 const String jobToCancel = 'a2a2a2a2-0000-4000-8000-000000000006';
 
+/// Cairo. Client A's. Unclaimed. Migration 0010's buyer's-suggestion target.
+///
+/// Its own row because the rules being tested here are *stateful*: the freeze only
+/// fires once an inspector is committed, so the buyer's half must run against a row
+/// that is still pending. [jobPending] is pending when this suite starts, but an
+/// earlier test accepts it in place, and a rule that passes on one run order and
+/// fails on another is not a rule being tested.
+const String jobCentreSuggested = 'a2a2a2a2-0000-4000-8000-000000000007';
+
+/// Cairo. Client A's. Unclaimed. Migration 0010's inspector-books target.
+///
+/// Separate from [jobCentreSuggested] for the same reason: this test drives the row
+/// to `accepted`, and the buyer's tests above and below it need it not to be.
+const String jobCentreBooked = 'a2a2a2a2-0000-4000-8000-000000000008';
+
 /// The report the evidence rows hang off.
 const String reportForEvidence = 'd2d2d2d2-0000-4000-8000-000000000001';
 
@@ -348,6 +363,184 @@ void main() {
       );
     });
 
+    // ---------------------------------------------------------------------
+    // The custom centre columns, migration 0010.
+    //
+    // Four columns, two parties, one row — which is why this is a trigger and not
+    // another policy. Each rule is tested *as the party it is aimed at*, for the
+    // reason the inspector-name test above gives: run as the other party, two rules
+    // would fire and neither could be removed without a failure.
+    // ---------------------------------------------------------------------
+
+    group('the custom centre columns', () {
+      approvalTest('a buyer may suggest a centre on their own request', () async {
+        // The whole buyer half of the feature. It has to be permitted: the request
+        // would be rejected by 0010's shape constraint, which is what makes a name
+        // without a coordinate unstorable.
+        await harness.asUser(clientA);
+        await harness.db.execute(
+          'update public.car_inspections set custom_centre_name = \$1, '
+          'custom_centre_lat = \$1, custom_centre_lng = \$1 where id = \$1::uuid',
+          parameters: ['Al-Amana', 26.4207, 50.0888, jobCentreSuggested],
+        );
+
+        await harness.asSuperuser();
+        final Result row = await harness.db.execute(
+          'select custom_centre_name, custom_centre_lat, custom_centre_lng '
+          'from public.car_inspections where id = \$1::uuid',
+          parameters: [jobCentreSuggested],
+        );
+        expect(row.first[0], 'Al-Amana');
+        expect(row.first[1], 26.4207);
+        expect(row.first[2], 50.0888);
+      });
+
+      approvalTest(
+        'a buyer may NOT file the centre proof photo',
+        () async {
+          // Rule 1, and the only field on the whole request that asserts something
+          // about a third party. A buyer-filed photo would be read off the report
+          // as the inspector's verification that a shop is real, which is the one
+          // claim in the document the inspector has not made.
+          //
+          // Tested on the *pending* row, which is the only row where a buyer is
+          // otherwise free to write anything — on an accepted one 0010's rule 2
+          // would refuse first and this would pass for the wrong reason.
+          await harness.asUser(clientA);
+          await harness.expectDenied(
+            "update public.car_inspections set "
+            "custom_centre_proof_photo_url = 'forged.jpg' "
+            'where id = \$1::uuid',
+            parameters: [jobCentreSuggested],
+            sqlState: checkViolation,
+            because: 'the proof photo is the inspector\'s assertion, not the buyer\'s',
+          );
+        },
+      );
+
+      approvalTest(
+        'a buyer may NOT file the centre proof photo when creating the request',
+        () async {
+          // The INSERT half of rule 1, and the reason the trigger guards `insert` as
+          // well as `update`. A guard on UPDATE alone leaves the column forgeable
+          // from the moment the row exists, because the buyer's own INSERT policy
+          // lets them name any column on a row they own.
+          await harness.asUser(clientA);
+          await harness.expectDenied(
+            'insert into public.car_inspections '
+            "(id, client_id, car_make, car_model, car_year, seller_phone, "
+            "seller_location_address, city, status, price, client_name, "
+            'custom_centre_name, custom_centre_lat, custom_centre_lng, '
+            'custom_centre_proof_photo_url) values '
+            "(\$1::uuid, \$2::uuid, 'Toyota', 'FJ', 2023, '+966500000009', "
+            "'Prince Faisal Road', 'Dammam', 'pending', 199, 'Client A', "
+            "\$3, 26.4207, 50.0888, 'forged.jpg')",
+            parameters: [
+              'a2a2a2a2-0000-4000-8000-000000000009',
+              clientA,
+              'Al-Amana',
+            ],
+            sqlState: checkViolation,
+            because: 'the proof photo is the inspector\'s assertion',
+          );
+        },
+      );
+
+      approvalTest(
+        "a buyer's suggested centre freezes once an inspector is committed",
+        () async {
+          // Rule 2, and the reason the booking box can preselect the buyer's name:
+          // an inspector accepts a job on the strength of the centre the buyer
+          // named, so that name must not change underneath them afterwards.
+          await harness.asUser(clientA);
+          await harness.expectDenied(
+            "update public.car_inspections set custom_centre_name = 'Elsewhere' "
+            'where id = \$1::uuid',
+            parameters: [jobAccepted],
+            sqlState: checkViolation,
+            because: 'the inspector already agreed to inspect at that centre',
+          );
+
+          // The coordinate too, in the same write shape. A frozen name over a moved
+          // pin is a centre that does not exist.
+          await harness.expectDenied(
+            'update public.car_inspections set custom_centre_lat = 24.7136 '
+            'where id = \$1::uuid',
+            parameters: [jobAccepted],
+            sqlState: checkViolation,
+            because: 'the location freezes with the name',
+          );
+        },
+      );
+
+      approvalTest(
+        'the inspector may book an unlisted centre at acceptance',
+        () async {
+          // The write that has to work and the one rule 2 does *not* cover. If the
+          // immutability rule were copied from 0009's without this carve-out, the
+          // inspector could never supply a centre on a job they had just claimed,
+          // and the feature would be inert for exactly the rows it exists for.
+          await harness.asUser(inspectorCairo);
+          await harness.db.execute(
+            'update public.car_inspections set status = \$1, '
+            "inspection_center_name = 'Al-Amana', center_fee = 450, "
+            'custom_centre_name = \$1, custom_centre_lat = \$1, '
+            'custom_centre_lng = \$1, custom_centre_proof_photo_url = \$1 '
+            'where id = \$1::uuid',
+            parameters: [
+              'accepted',
+              'Al-Amana',
+              26.4207,
+              50.0888,
+              'proof.jpg',
+              jobCentreBooked,
+            ],
+          );
+
+          await harness.asSuperuser();
+          final Result row = await harness.db.execute(
+            'select status, inspection_center_name, center_fee, '
+            'custom_centre_name, custom_centre_proof_photo_url '
+            'from public.car_inspections where id = \$1::uuid',
+            parameters: [jobCentreBooked],
+          );
+          expect(row.first[0], 'accepted');
+          expect(row.first[1], 'Al-Amana');
+          expect(row.first[2], 450);
+          expect(row.first[3], 'Al-Amana');
+          expect(row.first[4], 'proof.jpg');
+        },
+      );
+
+      approvalTest('a name without a coordinate is not storable', () async {
+        // The shape constraint, asserted directly. It is the guarantee the form's
+        // completeness check exists to honour, and a form check that stopped
+        // matching the database would be worse than no check at all: the request
+        // would fail at submit, with a message about a constraint the buyer cannot
+        // see.
+        await harness.asUser(clientA);
+        await harness.expectDenied(
+          "update public.car_inspections set custom_centre_name = 'Nowhere' "
+          'where id = \$1::uuid',
+          parameters: [jobCentreSuggested],
+          sqlState: checkViolation,
+          because: 'a centre with no location cannot be sent to an inspector',
+        );
+      });
+
+      approvalTest('a coordinate off the globe is not storable', () async {
+        await harness.asUser(clientA);
+        await harness.expectDenied(
+          'update public.car_inspections set custom_centre_name = \$1, '
+          'custom_centre_lat = \$1, custom_centre_lng = \$1 '
+          'where id = \$1::uuid',
+          parameters: ['Nowhere', 91, 50, jobCentreSuggested],
+          sqlState: checkViolation,
+          because: 'latitude 91 is not a place on earth',
+        );
+      });
+    });
+
     group('authoring a report without the seven 1-5 ratings', () {
       approvalTest(
         'the seven superseded ratings are nullable',
@@ -583,7 +776,13 @@ Future<void> installApprovalFixtures(Connection db) async {
        'pending', 199, 'Client B', null),
       ('$jobToCancel', '$clientA', '$inspectorCairo',
        'Toyota', 'FJ', 2023, '+966500000006', 'طريق الملك فهد', 'Dammam',
-       'accepted', 199, 'Client A', 'Karim Adel')
+       'accepted', 199, 'Client A', 'Karim Adel'),
+      ('$jobCentreSuggested', '$clientA', null,
+       'Toyota', 'FJ', 2023, '+966500000007', 'طريق الملك فهد', 'Dammam',
+       'pending', 199, 'Client A', null),
+      ('$jobCentreBooked', '$clientA', null,
+       'Toyota', 'FJ', 2023, '+966500000008', 'طريق الملك فهد', 'Dammam',
+       'pending', 199, 'Client A', null)
   ''');
 
   await db.execute('''

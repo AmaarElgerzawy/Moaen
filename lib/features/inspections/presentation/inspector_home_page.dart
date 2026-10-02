@@ -1,20 +1,29 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/format/saudi_format.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/user_profile.dart';
+import '../../cities/application/city_controller.dart';
+import '../../cities/data/city_repository.dart';
 import '../../cities/presentation/city_picker.dart';
 import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
+import '../data/location_surface.dart';
+import '../domain/custom_centre.dart';
 import '../domain/inspection_centre.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_request.dart';
 import 'accept_request.dart';
 import 'widgets/design_widgets.dart';
+import 'widgets/location_picker.dart';
 
 /// The inspector's four-tab shell: tasks, inspections, wallet, profile.
 ///
@@ -545,8 +554,38 @@ class _BookingBox extends ConsumerStatefulWidget {
 
 class _BookingBoxState extends ConsumerState<_BookingBox> {
   InspectionCentre? _centre;
+  _UnlistedChoice? _custom;
   DateTime? _day;
   TimeOfDay? _time;
+
+  /// Why the last confirm attempt was refused, or null if there has not been one.
+  ///
+  /// The message rather than a flag, because the reasons are not interchangeable: a
+  /// missing day and a missing proof photo are different omissions, and a box that
+  /// said "the centre is incomplete" when the day was the problem would send the
+  /// inspector to fill in a centre that was already fine.
+  ///
+  /// Nothing is recorded until someone presses confirm, so an untouched form is
+  /// never a wall of red.
+  String? _attemptError;
+
+  @override
+  void initState() {
+    super.initState();
+    // The buyer's suggestion is preselected, so the inspector confirms or overrides
+    // it rather than retyping a name the buyer already supplied. Deliberately
+    // without the fee or the proof photograph: those are the two things the buyer
+    // cannot supply, because one is the inspector's figure and the other is the
+    // inspector's standing behind the claim that a shop is real.
+    final CustomCentre? suggested = widget.request.customCentre;
+    if (suggested != null && widget.request.inspectionCenterName == null) {
+      _custom = _UnlistedChoice(centre: suggested);
+    }
+  }
+
+  /// Whether there is anything to confirm — the check the confirm button's enabled
+  /// state and the toast in [_confirm] both read, so they cannot disagree.
+  bool get _hasCentre => _centre != null || _custom != null;
 
   @override
   Widget build(BuildContext context) {
@@ -579,17 +618,34 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
           FieldLabel(l10n.centreSelectLabel(widget.request.city)),
           SelectField(
             label: l10n.centreSelectLabel(widget.request.city),
-            value: bookedCentre == null
-                ? (_centre == null
-                      ? ''
-                      : l10n.centreBookedValue(
-                          _centre!.name,
-                          _centre!.city,
-                        ))
-                : l10n.centreBookedValue(bookedCentre, widget.request.city),
-            muted: bookedCentre == null && _centre == null,
+            // The database's value first when there is one, then whatever has been
+            // picked but not saved. Two sources in that order, so what the buyer sees
+            // and what the inspector confirmed cannot disagree on screen.
+            value: bookedCentre != null
+                ? l10n.centreBookedValue(bookedCentre, widget.request.city)
+                : _centre != null
+                ? l10n.centreBookedValue(_centre!.name, _centre!.city)
+                : _custom != null
+                ? l10n.customCentreBookedValue(_custom!.centre.name)
+                : '',
+            muted: bookedCentre == null && !_hasCentre,
             onTap: () => _pickCentre(centres),
           ),
+          // Editing the unlisted centre in place, rather than only through the list
+          // sheet: the preselected suggestion is incomplete by construction, so the
+          // common next action is finishing it, and making that mean reopening a
+          // list to choose an option already chosen would be two taps to do one
+          // thing.
+          if (_custom != null && bookedCentre == null) ...<Widget>[
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              height: 44,
+              child: OutlinedButton(
+                onPressed: _editCustomCentre,
+                child: Text(l10n.customCentreSheetOption),
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
           FieldLabel(l10n.centreDayTimeLabel),
           TwoUp(
@@ -614,12 +670,14 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
               ),
             ],
           ),
-          if (error != null) ...<Widget>[
+          if (error != null || _attemptError != null) ...<Widget>[
             const SizedBox(height: AppSpacing.sm),
             Text(
-              error is InspectionFailure
-                  ? error.message
-                  : l10n.tabLoadError,
+              error != null
+                  ? (error is InspectionFailure
+                        ? error.message
+                        : l10n.tabLoadError)
+                  : _attemptError!,
               style: AppText.secondary(12, color: AppColors.live),
             ),
           ],
@@ -663,18 +721,76 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
   Future<void> _pickCentre(
     AsyncValue<List<InspectionCentre>> centres,
   ) async {
-    final List<InspectionCentre> all = centres.value ?? const <InspectionCentre>[];
     if (centres.isLoading) return;
-    if (all.isEmpty) {
-      _toast(AppLocalizations.of(context).centreEmpty);
-      return;
-    }
-    final InspectionCentre? picked = await showModalBottomSheet<InspectionCentre>(
+    final List<InspectionCentre> all = centres.value ?? const <InspectionCentre>[];
+
+    // No early return on an empty catalogue. That return is the bug this feature
+    // exists to fix: a city with no seeded centre showed a toast and left the
+    // inspector with no way to book at all, when naming a centre by hand is a
+    // complete answer. The sheet now always opens, and an empty list still offers
+    // the unlisted option.
+    final Object? picked = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
-      builder: (BuildContext sheetContext) => _CentreSheet(centres: all),
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) => _CentreSheet(
+        centres: all,
+        // Reopening the sheet on an unlisted centre starts from what is already
+        // there, so an inspector who typed a name and closed the sheet by mistake
+        // does not lose it.
+        initial: _custom,
+      ),
     );
-    if (picked != null && mounted) setState(() => _centre = picked);
+
+    if (!mounted || picked == null) return;
+
+    // The "another centre" row does not carry a centre — it is a request to be
+    // asked for one. Routing it here rather than having the row pop null is the
+    // whole difference between a reachable option and a dead row: on a request with
+    // no buyer suggestion, this list is the *only* way into the unlisted form, so a
+    // row that merely closed the sheet left an inspector with no way to book at all.
+    if (identical(picked, _unlistedChoice)) {
+      await _editCustomCentre();
+      return;
+    }
+
+    // `Object` because the sheet returns one of two unrelated types. Narrowing
+    // rather than wrapping them in a common class: the two are already different
+    // domain objects, and a wrapper here would be a third type existing only to be
+    // taken apart again two lines below.
+    setState(() {
+      _attemptError = null;
+      if (picked is InspectionCentre) {
+        _centre = picked;
+        // The buyer's suggestion stays on the row — it is the record of what they
+        // asked for, and erasing it because the inspector chose differently would
+        // discard the buyer's input rather than record a decision. What was booked
+        // is `inspection_center_name`, and that is what the report and the invoice
+        // read.
+        _custom = null;
+      } else if (picked is _UnlistedChoice) {
+        _custom = picked;
+        _centre = null;
+      }
+    });
+  }
+
+  Future<void> _editCustomCentre() async {
+    final Object? picked = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) => _CustomCentreSheet(
+        initial: _custom,
+        city: widget.request.city,
+      ),
+    );
+    if (!mounted || picked is! _UnlistedChoice) return;
+    setState(() {
+      _attemptError = null;
+      _custom = picked;
+      _centre = null;
+    });
   }
 
   Future<void> _pickDay() async {
@@ -699,20 +815,37 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
   }
 
   Future<void> _confirm() async {
-    final InspectionCentre? centre = _centre;
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final DateTime? day = _day;
     final TimeOfDay? time = _time;
-    if (centre == null || day == null || time == null) {
-      _toast(AppLocalizations.of(context).errorRequired);
+    final _UnlistedChoice? custom = _custom;
+
+    if (!_hasCentre || day == null || time == null) {
+      _markAttempted(l10n.errorRequired);
       return;
     }
+
+    // An unlisted centre cannot be confirmed on the buyer's name and location
+    // alone. The fee is the number the buyer approves on their invoice and the
+    // proof is the inspector's assertion that a shop is real — both are facts about
+    // a third party that only this inspector can supply, and both end up in the
+    // report. Booking without them would produce an invoice with a fee of zero and
+    // an uncertified centre.
+    if (_centre == null && !(custom?.isComplete ?? false)) {
+      _markAttempted(l10n.customCentreIncomplete);
+      return;
+    }
+
     try {
       await ref
           .read(inspectionRequestControllerProvider.notifier)
           .book(
             widget.request.id,
-            centreName: centre.name,
-            fee: centre.fee,
+            // The name goes into `inspection_center_name` either way, so the
+            // report, the buyer's invoice and the board all read one string and
+            // none of them has to know a custom centre exists.
+            centreName: _centre?.name ?? custom!.centre.name,
+            fee: _centre?.fee ?? custom!.fee!,
             appointmentAt: DateTime(
               day.year,
               day.month,
@@ -720,6 +853,8 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
               time.hour,
               time.minute,
             ),
+            customCentre: custom?.centre,
+            proofPhoto: custom?.proofPhoto,
           );
       // The fields are cleared so the card falls back to showing the database's
       // confirmed values rather than the picks that produced them — the same
@@ -727,8 +862,10 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
       if (mounted) {
         setState(() {
           _centre = null;
+          _custom = null;
           _day = null;
           _time = null;
+          _attemptError = null;
         });
       }
     } on Object {
@@ -738,6 +875,18 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
     }
   }
 
+  /// Records a failed attempt and shows the reason.
+  ///
+  /// A `setState` rather than a bare toast so the box's own error line carries the
+  /// message: the button sits at the bottom of a four-field box, and a snackbar
+  /// that dismisses itself before an inspector has read which of the four fields is
+  /// missing is not feedback.
+  void _markAttempted(String message) {
+    _toast(message);
+    if (mounted) setState(() => _attemptError = message);
+  }
+
+
   void _toast(String message) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
@@ -745,11 +894,80 @@ class _BookingBoxState extends ConsumerState<_BookingBox> {
   }
 }
 
-/// The centre list behind the booking field.
+/// What [_CentreSheet] pops when the inspector reaches for the unlisted option.
+///
+/// A sentinel rather than an empty [_UnlistedChoice], and rather than null: null
+/// means "the sheet was dismissed", which the caller cannot tell apart from a
+/// choice — and conflating them is what left the row doing nothing.
+const Object _unlistedChoice = Object();
+
+/// What the inspector has entered for a centre that is not in the approved list.
+///
+/// Four values that are only meaningful together: the buyer's suggested name and
+/// location, the inspector's own fee, and the inspector's proof photograph. Held as
+/// one value rather than four nullable fields because the question [_confirm] asks
+/// of them — may this be booked? — is one question about the whole, and four fields
+/// would mean four places where a partial answer could be mistaken for a complete
+/// one.
+///
+/// The two halves come from different people and that is the point: the name may be
+/// the buyer's suggestion, the fee and the photograph may not be. Migration 0010's
+/// trigger enforces the same split, so a value built here cannot be one the database
+/// would reject for being the wrong party's.
+class _UnlistedChoice {
+  const _UnlistedChoice({
+    required this.centre,
+    this.fee,
+    this.proofPhoto,
+  });
+
+  final CustomCentre centre;
+
+  /// The inspector's figure, in SAR.
+  ///
+  /// Null until typed, and not defaulted to zero: a zero would be a real fee that
+  /// renders as "ر.س 0" on the buyer's invoice and reads as free.
+  final double? fee;
+
+  /// The photograph, held in memory until the booking is confirmed.
+  ///
+  /// An [XFile] rather than a path, so nothing is uploaded until there is a booking
+  /// to attach it to — the same choice report entry makes. An object uploaded
+  /// against a booking that then fails validation is an orphan the bucket's cleanup
+  /// eventually removes, and an inspector who mistypes a fee should not have caused
+  /// one.
+  final XFile? proofPhoto;
+
+  bool get hasProof => proofPhoto != null;
+
+  /// True once every part the database and the invoice both need is present.
+  ///
+  /// `fee` strictly positive rather than merely non-null, because the database's
+  /// `check (fee >= 0)` would accept zero and the buyer should not: a free
+  /// inspection is a different commercial decision from an unpriced one.
+  bool get isComplete =>
+      centre.isComplete && (fee ?? 0) > 0 && hasProof;
+
+  _UnlistedChoice copyWith({
+    CustomCentre? centre,
+    double? fee,
+    XFile? proofPhoto,
+  }) => _UnlistedChoice(
+    centre: centre ?? this.centre,
+    fee: fee ?? this.fee,
+    proofPhoto: proofPhoto ?? this.proofPhoto,
+  );
+}
+
+/// The centre list behind the booking field, plus the unlisted option.
 class _CentreSheet extends StatelessWidget {
-  const _CentreSheet({required this.centres});
+  const _CentreSheet({required this.centres, this.initial});
 
   final List<InspectionCentre> centres;
+
+  /// The unlisted choice already in progress, if any — so the list's "another
+  /// centre" row can be labelled as continuing it rather than starting over.
+  final _UnlistedChoice? initial;
 
   @override
   Widget build(BuildContext context) {
@@ -776,8 +994,33 @@ class _CentreSheet extends StatelessWidget {
           Flexible(
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: centres.length,
+              // One more row than there are centres: the unlisted option is a choice
+              // in this list, not a separate screen, and it has to be reachable from
+              // here or an inspector in a city with no approved centre has no way
+              // to book at all.
+              itemCount: centres.length + 1,
               itemBuilder: (BuildContext context, int index) {
+                // Last, so every approved centre stays above it. `initial` is null on
+                // the first open, and this row is how one becomes non-null.
+                if (index == centres.length) {
+                  return ListTile(
+                    title: Text(l10n.customCentreSheetOption),
+                    subtitle: initial == null
+                        ? null
+                        : Text(
+                            l10n.customCentreBookedValue(initial!.centre.name),
+                          ),
+                    trailing: Text(
+                      l10n.customCentreSheetTitle,
+                      style: AppText.title(13, color: AppColors.green),
+                    ),
+                    // The sentinel, not a built [\_UnlistedChoice]: the row cannot
+                    // make one, because the fee and the proof are the inspector's to
+                    // supply and this sheet collects neither. It asks for them, and
+                    // [_BookingBoxState._pickCentre] opens the form that does.
+                    onTap: () => Navigator.of(context).pop(_unlistedChoice),
+                  );
+                }
                 final InspectionCentre centre = centres[index];
                 return ListTile(
                   title: Text(centre.name),
@@ -790,8 +1033,339 @@ class _CentreSheet extends StatelessWidget {
               },
             ),
           ),
+          // When the catalogue is empty the list is one row saying "another centre"
+          // with nothing above it, which reads as a broken list. The existing
+          // `centreEmpty` message is what makes the situation legible instead.
+          if (centres.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
+              child: Text(
+                l10n.centreEmpty,
+                textAlign: TextAlign.center,
+                style: AppText.secondary(13),
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+/// The unlisted centre form: name, map, fee and proof photograph.
+///
+/// An **editing** sheet rather than a create-only one, because the buyer's
+/// suggestion arrives here already half-filled and the inspector's job is to finish
+/// it. A create-only sheet would show empty fields next to a preselected suggestion
+/// and read as though the suggestion had been discarded.
+class _CustomCentreSheet extends ConsumerStatefulWidget {
+  const _CustomCentreSheet({this.initial, required this.city});
+
+  final _UnlistedChoice? initial;
+
+  /// The request's city — the map's anchor, and the reason a Dammam inspection does
+  /// not open on a Riyadh pin.
+  final String city;
+
+  @override
+  ConsumerState<_CustomCentreSheet> createState() => _CustomCentreSheetState();
+}
+
+class _CustomCentreSheetState extends ConsumerState<_CustomCentreSheet> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name = TextEditingController(
+    text: widget.initial?.centre.name ?? '',
+  );
+  late final TextEditingController _fee = TextEditingController(
+    text: widget.initial?.fee == null ? '' : _feeText(widget.initial!.fee!),
+  );
+  late LatLng? _point = widget.initial == null
+      ? null
+      : LatLng(
+          widget.initial!.centre.latitude,
+          widget.initial!.centre.longitude,
+        );
+  XFile? _proof;
+
+  @override
+  void initState() {
+    super.initState();
+    _proof = widget.initial?.proofPhoto;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _fee.dispose();
+    super.dispose();
+  }
+
+  /// `300` — the fee field shows a bare number, because the field label already says
+  /// what the number is and a currency inside an input is something to have to
+  /// strip before parsing.
+  static String _feeText(double fee) =>
+      fee == fee.roundToDouble() ? fee.toStringAsFixed(0) : fee.toString();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final CityCoordinates? anchor = ref.watch(
+      cityCoordinatesProvider(widget.city),
+    ).value;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          // Scrollable because the fee field's keyboard can cover the save button,
+          // and this sheet has four fields where the design's centre sheet had none.
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    0,
+                    AppSpacing.lg,
+                    AppSpacing.sm,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        l10n.customCentreSheetTitle,
+                        style: AppText.title(16),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        l10n.customCentreSheetIntro,
+                        style: AppText.secondary(13),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      FieldLabel(l10n.customCentreNameLabel),
+                      DesignTextField(
+                        controller: _name,
+                        hintText: l10n.customCentreNameHint,
+                        maxLength: 120,
+                        validator: (String? v) =>
+                            (v ?? '').trim().length <
+                                CustomCentre.minNameLength
+                            ? l10n.errorRequired
+                            : null,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _CentreAnchoredLocation(
+                        value: _point,
+                        city: widget.city,
+                        fallback: anchor == null
+                            ? kFallbackCentre
+                            : LatLng(anchor.latitude, anchor.longitude),
+                        onChanged: (LatLng v) => setState(() => _point = v),
+                        errorText: _proof == null
+                            ? null
+                            : l10n.customCentreLocationRequired,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      FieldLabel(l10n.customCentreFeeLabel),
+                      DesignTextField(
+                        controller: _fee,
+                        hintText: l10n.customCentreFeeHint,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        validator: _validateFee,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _ProofPicker(
+                        photo: _proof,
+                        onPick: _pickProof,
+                      ),
+                      if (_proof == null) ...<Widget>[
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          l10n.customCentreProofRequired,
+                          style: AppText.secondary(12, color: AppColors.live),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.lg),
+                      FilledButton(
+                        onPressed: _save,
+                        child: Text(l10n.createSubmit),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A fee the buyer can be shown: a number, above zero, and finite.
+  ///
+  /// Below zero is refused here rather than by the database because the buyer would
+  /// see it on their invoice first. `infinity` is refused because it formats as a
+  /// perfectly reasonable-looking figure in `CostEstimate.format` and would be
+  /// stored as a real number nobody can pay.
+  String? _validateFee(String? raw) {
+    final String text = (raw ?? '').trim();
+    if (text.isEmpty) {
+      return AppLocalizations.of(context).customCentreFeeInvalid;
+    }
+    final double? value = double.tryParse(text);
+    if (value == null || value <= 0 || !value.isFinite) {
+      return AppLocalizations.of(context).customCentreFeeInvalid;
+    }
+    return null;
+  }
+
+  Future<void> _pickProof() async {
+    final XFile? file = await ref
+        .read(photoPickerProvider)
+        .pickFromGallery();
+    if (file != null && mounted) setState(() => _proof = file);
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final LatLng? point = _point;
+    final XFile? proof = _proof;
+    final double? fee = double.tryParse(_fee.text.trim());
+    // Unreachable given the two validators, and kept because the alternative is
+    // building a `CustomCentre` from `double.tryParse`'s null and shipping that to
+    // the database as a coordinate.
+    if (point == null || proof == null || fee == null) return;
+
+    Navigator.of(context).pop(
+      _UnlistedChoice(
+        centre: CustomCentre(
+          name: _name.text.trim(),
+          latitude: point.latitude,
+          longitude: point.longitude,
+        ),
+        fee: fee,
+        proofPhoto: proof,
+      ),
+    );
+  }
+}
+
+/// [LocationField] anchored on the request's city.
+///
+/// Separate from the create-request form's equivalent because this sheet is a
+/// route of its own with its own error reporting: the inline field there is part of
+/// a `Form` and the sheet's is not, so they cannot be the same widget.
+class _CentreAnchoredLocation extends StatelessWidget {
+  const _CentreAnchoredLocation({
+    required this.value,
+    required this.city,
+    required this.fallback,
+    required this.onChanged,
+    required this.errorText,
+  });
+
+  final LatLng? value;
+  final String city;
+  final LatLng fallback;
+  final ValueChanged<LatLng> onChanged;
+
+  /// Unused for validation — a `SelectField` cannot show a `Form` error — so it is
+  /// not passed on and the sheet shows its own line instead.
+  final String? errorText;
+
+  @override
+  Widget build(BuildContext context) {
+    return LocationField(
+      value: value,
+      initial: fallback,
+      onChanged: onChanged,
+    );
+  }
+}
+
+/// The proof photograph row: a thumbnail once attached, a plain button before.
+///
+/// The same seam the report's photo control uses, so a test overrides one provider
+/// and both surfaces stop touching the gallery.
+class _ProofPicker extends ConsumerWidget {
+  const _ProofPicker({required this.photo, required this.onPick});
+
+  final XFile? photo;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final XFile? file = photo;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        FieldLabel(l10n.customCentreProofLabel),
+        if (file == null)
+          SizedBox(
+            height: 44,
+            child: OutlinedButton(
+              onPressed: onPick,
+              child: Text(l10n.customCentreProofAdd),
+            ),
+          )
+        else
+          Row(
+            children: <Widget>[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: Image.file(
+                  File(file.path),
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  // The path is whatever the gallery handed back, and a file that
+                  // has been moved or deleted between picking and saving must not
+                  // take the sheet down with it.
+                  errorBuilder: (_, _, _) => const SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: ColoredBox(color: AppColors.inputFill),
+                      ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  l10n.customCentreProofAttached,
+                  style: AppText.secondary(13),
+                ),
+              ),
+              TextButton(
+                onPressed: onPick,
+                child: Text(l10n.customCentreProofAdd),
+              ),
+            ],
+          ),
+      ],
     );
   }
 }
