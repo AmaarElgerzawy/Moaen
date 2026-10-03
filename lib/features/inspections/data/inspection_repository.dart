@@ -4,19 +4,63 @@ import '../../../core/logging/app_logger.dart';
 import '../domain/custom_centre.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_request.dart';
+import '../domain/order_filter.dart';
 
 /// A failure that is safe to show to the buyer.
 ///
 /// As with [AuthFailure], the server's message is logged rather than displayed:
 /// a PostgREST error names tables and columns, which is not something to show
 /// someone trying to book a car inspection.
+///
+/// [reason] is the value a screen switches on and the words come from the ARB
+/// files, so an Arabic build shows an Arabic sentence. [message] is the English
+/// fallback and the log's copy — never the thing rendered.
 class InspectionFailure implements Exception {
-  const InspectionFailure(this.message);
+  const InspectionFailure(
+    this.message, {
+    this.reason = InspectionFailureReason.unknown,
+    this.detail,
+  });
+
+  /// The server's own wording, for the log only.
+  final String? detail;
+
+  final InspectionFailureReason reason;
 
   final String message;
 
   @override
-  String toString() => message;
+  String toString() => detail == null ? message : '$message ($detail)';
+}
+
+/// Why an inspection write was refused.
+///
+/// A small closed set, because the only reason this matters is that a buyer who
+/// taps Accept on an offer the database has already closed deserves to be told
+/// *that*, rather than being shown the same banner as a dropped connection. Every
+/// other case collapses into [InspectionFailureReason.unknown] and the generic
+/// message.
+enum InspectionFailureReason {
+  /// Nothing specific to say. The common case.
+  unknown,
+
+  /// The network, or the server, refused the write.
+  network,
+
+  /// The job belongs to another inspector, so this one may not offer on it.
+  notTheAssignedInspector,
+
+  /// The job has not been claimed yet, so there is nobody to send an offer to.
+  notYetClaimed,
+
+  /// The inspection is finished or cancelled, and its terms are closed.
+  inspectionClosed,
+
+  /// The amount was zero, negative, or outside the column's bounds.
+  amountOutOfRange,
+
+  /// There was no offer outstanding to respond to.
+  noOfferToRespondTo,
 }
 
 /// All reads and writes of `car_inspections` go through here.
@@ -202,6 +246,189 @@ class InspectionRepository {
     }
   }
 
+  /// The buyer accepts or refuses the offer standing on [id].
+  ///
+  /// One column, and that is the whole method. `enforce_bidding` reads the open
+  /// offer and copies its amounts onto the row — so the client cannot agree to a
+  /// figure that was never offered, cannot set the commission, and cannot record
+  /// an agreement the other side never proposed. Writing `inspector_net` from here
+  /// would be the obvious way to build this and it would be wrong in three
+  /// separate ways, which is why the trigger owns the numbers.
+  ///
+  /// [counterNote] is the buyer's one line, handed to the inspector on the next
+  /// offer form. Optional: a refusal with no reason is still a refusal.
+  Future<void> respondToBid(
+    String id, {
+    required bool accept,
+    String counterNote = '',
+  }) async {
+    try {
+      await _client
+          .from(_table)
+          .update(<String, dynamic>{
+            'bid_status': accept ? 'agreed' : 'declined',
+            if (counterNote.trim().isNotEmpty) 'counter_note': counterNote.trim(),
+          })
+          .eq('id', id)
+          .select()
+          .single();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('offer response failed', error, stackTrace, {
+        'id': id,
+        'accept': accept,
+      });
+      throw InspectionFailure(
+        _responseMessage(error),
+        reason: _responseReason(error),
+        detail: error.message,
+      );
+    }
+  }
+
+  /// The refusal reasons `enforce_bidding` and `seal_bid` raise.
+  ///
+  /// Matched on the exception text rather than on a code, because Postgres raises
+  /// these as `check_violation` and `insufficient_privilege` — the same two codes
+  /// the repository already sees from half a dozen unrelated rules, so the code
+  /// would not distinguish them and the message is the only thing that does.
+  static InspectionFailureReason _responseReason(PostgrestException error) {
+    final String text = error.message;
+    if (text.contains('there is no counter-offer to respond to')) {
+      return InspectionFailureReason.noOfferToRespondTo;
+    }
+    if (text.contains('the agreed amounts are written by the bidding rules')) {
+      return InspectionFailureReason.notTheAssignedInspector;
+    }
+    if (text.contains('bid status is derived, not written')) {
+      return InspectionFailureReason.notTheAssignedInspector;
+    }
+    if (text.contains('commercial terms are immutable')) {
+      return InspectionFailureReason.inspectionClosed;
+    }
+    return InspectionFailureReason.network;
+  }
+
+  static String _responseMessage(PostgrestException error) => switch (
+    _responseReason(error)
+  ) {
+    InspectionFailureReason.noOfferToRespondTo =>
+      'That offer is no longer open.',
+    InspectionFailureReason.notTheAssignedInspector =>
+      'You cannot change these amounts.',
+    InspectionFailureReason.inspectionClosed =>
+      'This inspection is closed.',
+    _ => 'Could not send your answer. Please try again.',
+  };
+
+  /// Cancels an inspection.
+  ///
+  /// Admin-only in practice: the buyer may also cancel their own row under
+  /// `inspections_update_client`, and this method does not check which they are —
+  /// the policies decide, and a client that could cancel anything would be a hole
+  /// rather than a convenience.
+  Future<void> cancel(String id) async {
+    try {
+      await _client
+          .from(_table)
+          .update(<String, dynamic>{'status': 'cancelled'})
+          .eq('id', id)
+          .select()
+          .single();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('cancel failed', error, stackTrace, {'id': id});
+      throw const InspectionFailure('Could not cancel this inspection.');
+    }
+  }
+
+  /// Every inspection, for the admin orders monitor.
+  ///
+  /// Takes an explicit [filter] rather than a bag of optional parameters, so the
+  /// repository decides what each control means and the panel cannot pass a
+  /// combination that was never designed — six nullable parameters in a row is how
+  /// an `.eq` ends up silently replacing an `.gte`.
+  ///
+  /// Bounded to [_maxOrders]. A monitor that can find a specific order is useful;
+  /// one that enumerates every inspection ever filed is not, and an unbounded read
+  /// is a way to make an admin's phone fall over. The cap is applied here rather
+  /// than by the caller's paging so that every caller gets the same bound, and the
+  /// panel shows the row count so a truncated result does not read as a complete
+  /// one.
+  Future<List<InspectionRequest>> listAll({
+    OrderFilter filter = OrderFilter.none,
+    int limit = _maxOrders,
+  }) async {
+    try {
+      // Typed as the *filter* builder rather than the transform one, because every
+      // predicate below returns that type and `limit`/`order` — which return the
+      // transform builder — are deliberately applied last. Applying `limit` first
+      // would make the local a different type after one line, which is why the
+      // ordering here is not incidental.
+      PostgrestFilterBuilder<List<Map<String, dynamic>>> query = _client
+          .from(_table)
+          .select();
+
+      final InspectionStatus? status = filter.status;
+      if (status != null) query = query.eq('status', status.name);
+      if (filter.city != null && filter.city!.isNotEmpty) {
+        query = query.eq('city', filter.city!);
+      }
+      if (filter.minValue != null) {
+        query = query.gte('agreed_total', filter.minValue!);
+      }
+      if (filter.from != null) {
+        query = query.gte('created_at', filter.from!.toUtc().toIso8601String());
+      }
+      if (filter.to != null) {
+        query = query.lte('created_at', filter.to!.toUtc().toIso8601String());
+      }
+
+      final String term = filter.search.trim();
+      if (term.isNotEmpty) {
+        // `or` takes a comma-separated list of `column.operator.value` — PostgREST's
+        // filter syntax, not SQL — so the value is quoted here and the column names
+        // come from a fixed list. Nothing a user types can reach the column list.
+        final String quoted = 'ilike.*${_escapeOrTerm(term)}*';
+        query = query.or(
+          'reference_no.ilike.$quoted,'
+          'car_make.ilike.$quoted,'
+          'car_model.ilike.$quoted,'
+          'client_name.ilike.$quoted',
+        );
+      }
+
+      final List<Map<String, dynamic>> rows =
+          await query.limit(limit).order('created_at', ascending: false);
+      return rows.map(InspectionRequest.fromRow).toList();
+    } on PostgrestException catch (error, stackTrace) {
+      AppLogger.instance.error('order list failed', error, stackTrace, {
+        'filter': filter.toString(),
+      });
+      throw const InspectionFailure('Could not load the orders.');
+    }
+  }
+
+  /// The characters that would break out of PostgREST's `or` filter syntax.
+  ///
+  /// `,` separates the clauses and `.`, `(` and `)` delimit them, so a search box
+  /// is the one place a user types text that lands inside a query string. This is a
+  /// filter, not a query builder: the columns are still a fixed list and the only
+  /// thing a comma achieves is a wider search — but a term that reads as `*` would
+  /// otherwise match every row and look like a broken filter rather than a wide one.
+  static String _escapeOrTerm(String term) =>
+      term.replaceAll(RegExp(r'[,.()%*]'), ' ').trim();
+
+  /// The ceiling on an admin order read. See [listAll].
+  ///
+  /// Public because the monitor has to *say* when a result may be short, and a
+  /// duplicated literal would eventually disagree with the one that produced the
+  /// list — the notice would stop appearing at exactly the row count where it starts
+  /// to matter. A presentation concern reading a data constant is the smaller problem
+  /// compared with a silence that reads as "these are all the orders".
+  static const int maxMonitoredOrders = 200;
+
+  /// See [maxMonitoredOrders].
+  static const int _maxOrders = maxMonitoredOrders;
+
   // --- Inspector side --------------------------------------------------------
 
   /// The inspector's job board: requests waiting to be claimed.
@@ -338,23 +565,6 @@ class InspectionRepository {
       return 'This action is not allowed for this request right now.';
     }
     return _messageFor(error);
-  }
-
-  /// Cancels a request.
-  ///
-  /// A buyer's only write action in Phase 2. The `cancelled` transition is
-  /// enforced by the `enforce_inspection_transition` trigger, so a client
-  /// asking for an illegal jump is refused by the database rather than by this
-  /// method — the check here is for the error message, not for correctness.
-  Future<void> cancel(String id) async {
-    try {
-      await _client.from(_table).update(<String, dynamic>{
-        'status': 'cancelled',
-      }).eq('id', id);
-    } on PostgrestException catch (error, stackTrace) {
-      AppLogger.instance.error('request cancel failed', error, stackTrace);
-      throw InspectionFailure(_messageFor(error));
-    }
   }
 
   /// Maps a database error onto something a person can act on.

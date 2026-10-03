@@ -1,9 +1,19 @@
+import 'package:moaen/core/pricing/commission.dart';
 import 'package:moaen/features/inspections/data/inspection_repository.dart';
 import 'package:moaen/features/inspections/domain/custom_centre.dart';
+import 'package:moaen/features/inspections/domain/inspection_bid.dart';
 import 'package:moaen/features/inspections/domain/inspection_draft.dart';
 import 'package:moaen/features/inspections/domain/inspection_request.dart';
+import 'package:moaen/features/inspections/domain/order_filter.dart';
 
 import 'test_client.dart';
+
+/// A buyer's answer to a counter-offer, as the fake recorded it.
+///
+/// A record rather than three parameters, so a test asserting on it reads as one
+/// thing — the answer — rather than three separate columns that happen to have been
+/// sent together.
+typedef BidAnswer = ({String inspectionId, bool accept, String counterNote});
 
 /// An [InspectionRepository] with no network behind it.
 ///
@@ -83,7 +93,10 @@ class FakeInspectionRepository extends InspectionRepository {
   }
 
   @override
-  Future<InspectionRequest> create(InspectionDraft draft, String clientId) async {
+  Future<InspectionRequest> create(
+    InspectionDraft draft,
+    String clientId,
+  ) async {
     createdDrafts.add(draft);
     final Object? f = createFailure;
     if (f != null) throw f;
@@ -106,7 +119,8 @@ class FakeInspectionRepository extends InspectionRepository {
 
     return _requests.firstWhere(
       (InspectionRequest r) => r.id == id,
-      orElse: () => throw const InspectionFailure('Could not load that request.'),
+      orElse: () =>
+          throw const InspectionFailure('Could not load that request.'),
     );
   }
 
@@ -118,7 +132,10 @@ class FakeInspectionRepository extends InspectionRepository {
 
     final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
     if (index == -1) return;
-    _requests[index] = _copyWithStatus(_requests[index], InspectionStatus.cancelled);
+    _requests[index] = _copyWithStatus(
+      _requests[index],
+      InspectionStatus.cancelled,
+    );
   }
 
   @override
@@ -145,6 +162,74 @@ class FakeInspectionRepository extends InspectionRepository {
     ];
   }
 
+  /// Every order, filtered the way the database would.
+  ///
+  /// Modelled rather than stubbed, and it has to be modelled: the orders monitor
+  /// renders its status breakdown *below* the row list and only when that list is
+  /// non-empty, so a fake that answered an unfiltered read with nothing would make
+  /// the breakdown's test pass for the wrong reason — a monitor showing an empty
+  /// state rather than a grouped count.
+  ///
+  /// The filters mirror the repository's own predicates, including the two that are
+  /// easy to get wrong from the outside: the free-text term is a *case-insensitive*
+  /// substring over the reference, the car and the buyer, and the value floor reads
+  /// the agreed total with the budget as the fallback rather than the budget alone.
+  @override
+  Future<List<InspectionRequest>> listAll({
+    OrderFilter filter = OrderFilter.none,
+    int limit = 200,
+  }) async {
+    final InspectionFailure? f = failure;
+    if (f != null) throw f;
+
+    final String term = filter.search.trim().toLowerCase();
+    final List<InspectionRequest> matched = <InspectionRequest>[
+      for (final InspectionRequest request in _requests)
+        if (_matches(request, filter, term)) request,
+    ];
+
+    // Newest first, and capped — the two things the repository does that a monitor
+    // relying on "200 rows is all of them" would otherwise be wrong about.
+    matched.sort(
+      (InspectionRequest a, InspectionRequest b) =>
+          b.createdAt.compareTo(a.createdAt),
+    );
+    return matched.take(limit).toList();
+  }
+
+  static bool _matches(
+    InspectionRequest request,
+    OrderFilter filter,
+    String term,
+  ) {
+    if (filter.status != null && request.status != filter.status) return false;
+    if (filter.city != null &&
+        filter.city!.isNotEmpty &&
+        request.city != filter.city) {
+      return false;
+    }
+    if (term.isNotEmpty) {
+      final String buyer = request.clientName ?? '';
+      final bool hit =
+          request.referenceNo.toString().contains(term) ||
+          request.carMake.toLowerCase().contains(term) ||
+          request.carModel.toLowerCase().contains(term) ||
+          buyer.toLowerCase().contains(term);
+      if (!hit) return false;
+    }
+    final double? floor = filter.minValue;
+    if (floor != null && (request.agreedTotal ?? request.price) < floor) {
+      return false;
+    }
+    if (filter.from != null && request.createdAt.isBefore(filter.from!)) {
+      return false;
+    }
+    if (filter.to != null && request.createdAt.isAfter(filter.to!)) {
+      return false;
+    }
+    return true;
+  }
+
   @override
   Future<void> accept(String id, {String? inspectorName}) async {
     acceptedIds.add(id);
@@ -158,12 +243,73 @@ class FakeInspectionRepository extends InspectionRepository {
     // The trigger binds the claiming inspector; the fake does the same using
     // [assignedInspectorId], and freezes the name the same way the real accept
     // write does.
-    final InspectionRequest claimed = _requests[index].copyWith(
+    final InspectionRequest current = _requests[index];
+    final double fee = commission.feeFor(current.price);
+    final InspectionRequest claimed = current.copyWith(
       status: InspectionStatus.accepted,
       inspectorId: assignedInspectorId,
       inspectorName: inspectorName,
+      platformFee: fee,
+      inspectorNet: current.price - fee,
+      agreedTotal: current.price,
+      // A claim is not a negotiation, so this is written explicitly rather than left
+      // to the column default — the same value either way, but stated here because
+      // it is a fact about the claim and not about the row.
+      bidStatus: BidStatus.none,
     );
     _requests[index] = claimed;
+  }
+
+  /// [accept], on a claim, writes the fee/net/total split from [commission] exactly as
+  /// `enforce_bidding` does.
+  ///
+  /// Modelled rather than left null because the inspector's whole earnings card and
+  /// the buyer's invoice both read those three columns, and a fake that left them
+  /// null would make every screen that depends on a claimed price render its empty
+  /// case — so a test would "pass" against a screen no real request can reach.
+  Commission commission = const Commission();
+
+  /// Every answer passed to [respondToBid], in order.
+  ///
+  /// Recorded rather than only applied because the buyer's answer is *one word and a
+  /// sentence*. A test asserting only the resulting row would pass against a
+  /// repository that quietly wrote the agreed amounts itself — which is exactly the
+  /// thing the real write is built so a client cannot do.
+  final List<BidAnswer> bidAnswers = <BidAnswer>[];
+
+  /// Thrown by [respondToBid] alone.
+  ///
+  /// Separate from [failure] because a test for "the answer was refused" needs the
+  /// *read* to keep working: if every method threw, the page would render its load
+  /// error instead of the offer card, and the test would pass for the wrong reason —
+  /// asserting a banner that had nothing to do with the answer.
+  Object? respondFailure;
+
+  @override
+  Future<void> respondToBid(
+    String id, {
+    required bool accept,
+    String counterNote = '',
+  }) async {
+    bidAnswers.add((
+      inspectionId: id,
+      accept: accept,
+      counterNote: counterNote.trim(),
+    ));
+    final Object? answerFailure = respondFailure;
+    if (answerFailure != null) throw answerFailure;
+    final InspectionFailure? f = failure;
+    if (f != null) throw f;
+
+    final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
+    if (index == -1) return;
+    // `enforce_bidding` copies the amounts off the open offer. There is no offer here
+    // to copy, so only the flag and the note move — which is enough for the screens
+    // to stop offering the answer, and is all this fake can honestly claim to know.
+    _requests[index] = _requests[index].copyWith(
+      bidStatus: accept ? BidStatus.agreed : BidStatus.declined,
+      counterNote: counterNote.trim().isEmpty ? null : counterNote.trim(),
+    );
   }
 
   @override
@@ -176,7 +322,10 @@ class FakeInspectionRepository extends InspectionRepository {
 
     final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
     if (index == -1) return;
-    _requests[index] = _copyWithStatus(_requests[index], InspectionStatus.inProgress);
+    _requests[index] = _copyWithStatus(
+      _requests[index],
+      InspectionStatus.inProgress,
+    );
   }
 
   @override
@@ -189,7 +338,10 @@ class FakeInspectionRepository extends InspectionRepository {
 
     final int index = _requests.indexWhere((InspectionRequest r) => r.id == id);
     if (index == -1) return;
-    _requests[index] = _copyWithStatus(_requests[index], InspectionStatus.completed);
+    _requests[index] = _copyWithStatus(
+      _requests[index],
+      InspectionStatus.completed,
+    );
   }
 
   @override
@@ -266,21 +418,33 @@ class FakeInspectionRepository extends InspectionRepository {
     id: id,
     referenceNo: referenceNo,
     clientId: clientId,
-    clientName: draft.clientName.trim().isEmpty ? null : draft.clientName.trim(),
+    clientName: draft.clientName.trim().isEmpty
+        ? null
+        : draft.clientName.trim(),
     carMake: draft.carMake,
     carModel: draft.carModel,
     carYear: draft.year ?? 2020,
-    sellerName: draft.sellerName.trim().isEmpty ? null : draft.sellerName.trim(),
+    sellerName: draft.sellerName.trim().isEmpty
+        ? null
+        : draft.sellerName.trim(),
     sellerPhone: draft.sellerPhone,
     sellerLocationAddress: draft.sellerLocationAddress,
     city: draft.city,
-    plateNumber: draft.plateNumber.trim().isEmpty ? null : draft.plateNumber.trim(),
-    listingUrl: draft.listingUrl.trim().isEmpty ? null : draft.listingUrl.trim(),
+    plateNumber: draft.plateNumber.trim().isEmpty
+        ? null
+        : draft.plateNumber.trim(),
+    listingUrl: draft.listingUrl.trim().isEmpty
+        ? null
+        : draft.listingUrl.trim(),
     status: status,
-    // What the form's estimate became, not a figure the buyer chose — the design
-    // has no budget input, and the real write sends `CostEstimate.standard.total`.
-    price: CostEstimate.standard.total,
-    clientNotes: draft.clientNotes.trim().isEmpty ? null : draft.clientNotes.trim(),
+    // The budget the buyer typed, not a platform estimate: `price` is the buyer's
+    // proposal, and every later figure — the fee, the inspector's net, the agreed
+    // total — is derived from it. A fake that wrote `CostEstimate.standard.total`
+    // here would quietly re-flatten a feature the form now collects input for.
+    price: draft.budget,
+    clientNotes: draft.clientNotes.trim().isEmpty
+        ? null
+        : draft.clientNotes.trim(),
     createdAt: DateTime.utc(2026, 1, 1),
     updatedAt: DateTime.utc(2026, 1, 1),
   );
@@ -293,6 +457,15 @@ class FakeInspectionRepository extends InspectionRepository {
 }
 
 /// A request with sensible defaults, for tests that only care about one field.
+///
+/// The claimed-status defaults are the important part: [InspectionStatus.accepted]
+/// and [inProgress] mean an inspector holds the job, and the trigger writes the fee,
+/// the net and the agreed total at that moment. A builder that left them null for a
+/// claimed request would produce a row the database cannot produce, and every screen
+/// that reads them would render its "not priced yet" case — so the tests below it
+/// would pass against a request no real inspector ever sees. The commission is the
+/// one migration 0011 provisions, so the figures are 451/49 on the default 500
+/// budget unless a test asks for something else.
 InspectionRequest buildRequest({
   String id = 'req-1',
   int referenceNo = 1001,
@@ -311,6 +484,12 @@ InspectionRequest buildRequest({
   double? centreFee,
   InspectionStatus status = InspectionStatus.pending,
   double price = 500,
+  double? platformFee,
+  double? inspectorNet,
+  double? agreedTotal,
+  BidStatus bidStatus = BidStatus.none,
+  String? counterNote,
+  Commission commission = const Commission(),
   String? notes,
   String? plate,
   String? vin,
@@ -318,31 +497,51 @@ InspectionRequest buildRequest({
   DateTime? appointmentAt,
   DateTime? clientApprovedAt,
   CustomCentre? customCentre,
-}) => InspectionRequest(
-  id: id,
-  referenceNo: referenceNo,
-  clientId: clientId,
-  clientName: clientName,
-  inspectorId: inspectorId,
-  inspectorName: inspectorName,
-  carMake: make,
-  carModel: model,
-  carYear: year,
-  sellerName: sellerName,
-  sellerPhone: phone,
-  sellerLocationAddress: address,
-  city: city,
-  inspectionCenterName: centre,
-  centerFee: centreFee,
-  status: status,
-  price: price,
-  clientNotes: notes,
-  plateNumber: plate,
-  vin: vin,
-  odometerKm: odometerKm,
-  appointmentAt: appointmentAt,
-  clientApprovedAt: clientApprovedAt,
-  customCentre: customCentre,
-  createdAt: DateTime.utc(2026, 1, 1),
-  updatedAt: DateTime.utc(2026, 1, 1),
-);
+}) {
+  // The claim-time split, defaulted for a claimed request and computed from the
+  // budget. Written as a body rather than folded into the parameter defaults
+  // because all three have to agree about one commission, and three independent
+  // defaults are three places for them to stop agreeing.
+  final bool claimed =
+      status == InspectionStatus.accepted ||
+      status == InspectionStatus.inProgress;
+  final double? fee =
+      platformFee ?? (claimed ? commission.feeFor(price) : null);
+  final double? net =
+      inspectorNet ?? (claimed ? commission.netFor(price) : null);
+  final double? total = agreedTotal ?? (claimed ? price : null);
+
+  return InspectionRequest(
+    id: id,
+    referenceNo: referenceNo,
+    clientId: clientId,
+    clientName: clientName,
+    inspectorId: inspectorId,
+    inspectorName: inspectorName,
+    carMake: make,
+    carModel: model,
+    carYear: year,
+    sellerName: sellerName,
+    sellerPhone: phone,
+    sellerLocationAddress: address,
+    city: city,
+    inspectionCenterName: centre,
+    centerFee: centreFee,
+    status: status,
+    price: price,
+    platformFee: fee,
+    inspectorNet: net,
+    agreedTotal: total,
+    bidStatus: bidStatus,
+    counterNote: counterNote,
+    clientNotes: notes,
+    plateNumber: plate,
+    vin: vin,
+    odometerKm: odometerKm,
+    appointmentAt: appointmentAt,
+    clientApprovedAt: clientApprovedAt,
+    customCentre: customCentre,
+    createdAt: DateTime.utc(2026, 1, 1),
+    updatedAt: DateTime.utc(2026, 1, 1),
+  );
+}

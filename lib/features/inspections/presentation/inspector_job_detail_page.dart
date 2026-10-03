@@ -6,9 +6,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
-import '../domain/inspection_draft.dart';
 import '../domain/inspection_request.dart';
 import 'accept_request.dart';
+import 'offer_widgets.dart';
 import 'request_detail_page.dart' show StatusPill;
 import 'widgets/design_widgets.dart';
 
@@ -137,36 +137,14 @@ class InspectorJobDetailPage extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: AppSpacing.md),
-                    // The buyer's price, named as what it is: the total the buyer
-                    // was shown when they created the request. There is no
-                    // negotiation in this product, so there is nothing for an
-                    // inspector to quote here — the centre's fee arrives with the
-                    // booking, and the buyer's invoice is where the three lines
-                    // are split apart.
-                    DesignCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            l10n.costTitle,
-                            style: AppText.title(13),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          CostLine(
-                            label: l10n.invoiceInspectorFee,
-                            value: CostEstimate.format(
-                              CostEstimate.defaultInspectorFee,
-                            ),
-                            valueColor: AppColors.green,
-                          ),
-                          const DashedDivider(indent: AppSpacing.sm),
-                          Text(
-                            l10n.costEstimateNotice,
-                            style: AppText.secondary(11),
-                          ),
-                        ],
-                      ),
-                    ),
+                    // What the job pays *this* inspector, and the one action they
+                    // have about it. Replaces the standing 150 SAR estimate: that
+                    // figure was the platform's, and the price of a job is now
+                    // whatever the buyer proposed minus the commission — or
+                    // whatever the two of them agreed. An inspector reading a
+                    // number the platform picked for them is an inspector who
+                    // cannot tell what the job is worth.
+                    InspectorEarningsCard(request: request),
                     const SizedBox(height: AppSpacing.xl),
                     _ActionSection(
                       status: request.status,

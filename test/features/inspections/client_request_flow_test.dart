@@ -16,6 +16,7 @@ import 'package:moaen/features/inspections/presentation/client_dashboard_page.da
 import 'package:moaen/features/inspections/presentation/create_request_page.dart';
 import 'package:moaen/features/inspections/presentation/my_requests_page.dart';
 import 'package:moaen/features/inspections/presentation/request_detail_page.dart';
+import 'package:moaen/features/inspections/presentation/widgets/design_widgets.dart';
 import 'package:moaen/l10n/gen/app_localizations.dart';
 import 'package:moaen/features/cities/application/city_controller.dart';
 import 'package:moaen/features/cities/presentation/city_picker.dart';
@@ -198,12 +199,17 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Total inclusive:'), findsOneWidget);
-      // 300 + 150 + 49. The buyer's budget is gone from the design, so nothing
-      // else appears on this list.
+      // The buyer's own budget, split by the commission: 451 to the inspector, 49 to
+      // the platform, and the 300 the centre charges on top. The budget is no longer
+      // a platform figure the client has no say over, so it is not printed here —
+      // it is the sum of two of these lines, and a client reading four numbers to
+      // check three is a client doing arithmetic the app should be doing.
       expect(find.text('300 ر.س'), findsOneWidget);
-      expect(find.text('150 ر.س'), findsOneWidget);
+      expect(find.text('451 ر.س'), findsOneWidget);
       expect(find.text('49 ر.س'), findsOneWidget);
-      expect(find.text('499 ر.س'), findsOneWidget);
+      // 300 + 500. `agreed_total` is 500 because the commission splits the budget
+      // alone; the centre's fee is a pass-through the invoice adds on top.
+      expect(find.text('800 ر.س'), findsOneWidget);
     });
 
     testWidgets('an unbooked invoice says the centre fee is still to come', (
@@ -227,11 +233,14 @@ void main() {
         find.textContaining('Set after the inspector chooses the centre'),
         findsOneWidget,
       );
-      // Only the two fixed lines, and the floor they add up to.
-      expect(find.text('150 ر.س'), findsOneWidget);
+      // The budget's own split, which exists as soon as the job is claimed: 451 to
+      // the inspector, 49 to the platform, 500 all told. The centre's fee is the
+      // line that is still to come, so it is named as such rather than left out —
+      // and the total is the 500 alone, because the centre's fee is not yet a number
+      // the platform can invoice.
+      expect(find.text('451 ر.س'), findsOneWidget);
       expect(find.text('49 ر.س'), findsOneWidget);
-      expect(find.text('199 ر.س'), findsOneWidget);
-      expect(find.text('499 ر.س'), findsNothing);
+      expect(find.text('500 ر.س'), findsOneWidget);
     });
 
     testWidgets('the progress track advances with the status', (
@@ -402,18 +411,82 @@ void main() {
       expect(sent.clientName, 'Nadia Hassan');
     });
 
-    testWidgets('the total is the platform floor plus an unchosen centre', (
+    testWidgets('the budget breaks into the inspector share and the platform fee', (
       WidgetTester tester,
     ) async {
       await _pump(tester,   _app(FakeInspectionRepository(), child: const CreateRequestPage()));
 
-      // The design's three fixed lines. The centre's is the one the buyer cannot
-      // be quoted yet: the inspector picks the centre during the coordination
-      // window, so the total names it as still-to-come rather than showing a zero
-      // that would read as free.
-      expect(find.text('150 ر.س'), findsOneWidget);
+      // The budget is now the buyer's own figure, and the two lines under it are the
+      // split of *that* number — not the platform's standing 150 + 49. On the default
+      // budget of 500 with the seeded 49 fixed fee, the inspector's share is 451.
+      expect(find.text('500'), findsOneWidget);
+      expect(find.text('451 ر.س'), findsOneWidget);
       expect(find.text('49 ر.س'), findsOneWidget);
-      expect(find.text('199 ر.س + centre fee'), findsOneWidget);
+      // The centre's is still the one line the buyer cannot be quoted: the inspector
+      // picks the centre during the coordination window, so the total names it as
+      // still-to-come rather than showing a zero that would read as free.
+      expect(find.text('199 ر.س + centre fee'), findsNothing);
+      expect(find.text('500 ر.س + centre fee'), findsOneWidget);
+
+      // Re-typing the budget re-splits the two lines underneath it, on every
+      // keystroke and not only on submit — a breakdown that appeared after a failed
+      // submit would be a breakdown of the wrong number.
+      await tester.enterText(
+        _budgetField,
+        '1000',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('951 ر.س'), findsOneWidget);
+      expect(find.text('49 ر.س'), findsOneWidget);
+    });
+
+    testWidgets('a budget outside the accepted range is refused with its bound', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repo = FakeInspectionRepository();
+      await _pump(tester,   _app(repo, child: const CreateRequestPage()));
+
+      // Below the floor. The message names the floor rather than saying "invalid",
+      // because "invalid" tells a buyer nothing about which end of the range they
+      // are on the wrong side of.
+      await tester.enterText(_budgetField, '20');
+      await tester.tap(find.text('Send request'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enter at least 50 SAR.'), findsOneWidget);
+
+      // Above the ceiling, with the other bound named. Both ends are checked against
+      // the column's own constraint, which is why the numbers in the messages are
+      // [CostEstimate]'s rather than literals — a message that disagreed with the
+      // database would tell a buyer a limit it does not have.
+      await tester.enterText(_budgetField, '100001');
+      await tester.tap(find.text('Send request'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enter no more than 100000 SAR.'), findsOneWidget);
+
+      // Neither reached the repository. The form is the only thing that decides a
+      // budget is unacceptable; if the write were attempted and then refused, the
+      // buyer would see a server error for what is a field-level mistake.
+      expect(repo.createdDrafts, isEmpty);
+    });
+
+    testWidgets('a non-numeric budget is refused before the repository is called', (
+      WidgetTester tester,
+    ) async {
+      final FakeInspectionRepository repo = FakeInspectionRepository();
+      await _pump(tester, _app(repo, child: const CreateRequestPage()));
+
+      // The letters case: a buyer who pasted `500SAR` is not to be told the range,
+      // they are to be told to drop the letters. Two different mistakes get two
+      // different sentences for exactly this reason.
+      await tester.enterText(_budgetField, '500SAR');
+      await tester.tap(find.text('Send request'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enter a number.'), findsOneWidget);
+      expect(repo.createdDrafts, isEmpty);
     });
 
     testWidgets('notes are optional', (
@@ -681,3 +754,16 @@ const String _sellerNameHint = 'e.g. Abu Fahad';
 const String _sellerPhoneHint = '05xxxxxxxx';
 const String _notesHint =
     'e.g. Please check the front bumper repaint or the air conditioning...';
+
+/// The create form's budget field.
+///
+/// Scoped by its [CostBox] rather than found by value: every other field on this
+/// form is identified by its hint, but the budget is *prefilled* with
+/// `CostEstimate.defaultBudget`, so there is no hint showing and a value-based
+/// finder would stop matching the moment a test retyped it — which is exactly what
+/// the tests that re-type it are for. `CostBox` is the one widget on this form that
+/// contains the budget field and no other text field.
+final Finder _budgetField = find.descendant(
+  of: find.byType(CostBox),
+  matching: find.byType(TextFormField),
+);

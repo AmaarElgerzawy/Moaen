@@ -5,8 +5,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../application/inspection_controller.dart';
 import '../data/inspection_repository.dart';
-import '../domain/inspection_draft.dart';
 import '../domain/inspection_request.dart';
+import 'offer_widgets.dart';
 import 'widgets/design_widgets.dart';
 
 /// One request in full, with the cancel action.
@@ -157,78 +157,13 @@ class RequestDetailPage extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: AppSpacing.md),
-                    // The estimate, not the buyer's invoice: this card says what
-                    // the number is, where the buyer's says what they approved.
-                    // The centre's fee is unknown until an inspector books, so
-                    // this box carries the same pending line Screen 2's does.
-                    CostBox(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            l10n.costTitle,
-                            style: AppText.title(13, color: AppColors.greenDeep),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          CostLine(
-                            label: l10n.createCostCentre,
-                            value: match.centerFee == null
-                                ? l10n.invoiceCentrePending
-                                : CostEstimate.format(match.centerFee!),
-                          ),
-                          CostLine(
-                            label: l10n.invoiceInspectorFee,
-                            value: CostEstimate.format(
-                              CostEstimate.defaultInspectorFee,
-                            ),
-                          ),
-                          CostLine(
-                            label: l10n.invoicePlatformFee,
-                            value: CostEstimate.format(
-                              CostEstimate.defaultPlatformFee,
-                            ),
-                          ),
-                          const DashedDivider(
-                            color: AppColors.successBorder,
-                          ),
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  l10n.createCostTotalLabel,
-                                  style: AppText.title(
-                                    12,
-                                    color: AppColors.greenDeep,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Flexible(
-                                flex: 3,
-                                child: Text(
-                                  // The total of *this* request, not the create
-                                  // screen's standard: the centre fee is the one
-                                  // line that has moved since the request was
-                                  // made, and a total that ignored it would be a
-                                  // quote for a different transaction.
-                                  CostEstimate.format(
-                                    CostEstimate(
-                                      centerFee: match.centerFee,
-                                    ).total,
-                                  ),
-                                  textAlign: TextAlign.end,
-                                  style: AppText.title(
-                                    12,
-                                    color: AppColors.green,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+                    // The counter-offer, when one is standing. Above the invoice
+                    // rather than below it, because it is a *question* and the
+                    // invoice below is the context for answering it — a buyer
+                    // reading "you pay 249" needs to see the offer before they
+                    // see what the offer changed.
+                    BuyerOfferCard(request: match),
+                    OfferOutcomeCard(request: match),
                     const SizedBox(height: AppSpacing.xl),
                     if (match.status.isOpen)
                       OutlinedButton(

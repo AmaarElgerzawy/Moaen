@@ -3,11 +3,11 @@ import 'inspection_request.dart';
 
 /// What the buyer is asked to pay, broken down.
 ///
-/// Deliberately *not* persisted as a breakdown. `car_inspections.price` is a
-/// single column holding the buyer's stated budget, and D2 settled that there is
-/// no quotes table and no negotiation — so a breakdown shown here is a
-/// presentation of one number, not a set of priced line items the database
-/// knows about. Presenting it as anything more would be inventing a pricing
+/// Deliberately *not* persisted as a breakdown. `car_inspections.price` holds
+/// one number — the buyer's budget — and migration 0011 settles that there is no
+/// quotes table; so a breakdown shown here is a presentation of figures the
+/// database already stores elsewhere, not a set of priced line items it knows
+/// nothing about. Presenting it as anything more would be inventing a pricing
 /// model the schema does not have.
 ///
 /// The split exists because a buyer deciding whether to proceed needs to see
@@ -20,12 +20,34 @@ import 'inspection_request.dart';
 /// the centre is chosen by the inspector during the 48-hour coordination window.
 /// [centerFee] is therefore nullable and the UI says so, rather than showing a
 /// zero that would read as "free".
+///
+/// Read from a real inspection through [ofRequest] wherever one is available.
+/// The constructor's defaults are display placeholders for the create screen and
+/// for rows filed before migration 0011; see [defaultPlatformFee] for why they
+/// are constants and not a price list.
 class CostEstimate {
   const CostEstimate({
     this.centerFee,
     this.inspectorFee = defaultInspectorFee,
     this.platformFee = defaultPlatformFee,
   });
+
+  /// The breakdown of a request whose own columns record every line.
+  ///
+  /// This is the factory the three money screens use. The inspector's line is
+  /// `inspector_net` — what they actually keep, after the commission — rather
+  /// than a constant that would have to be kept in step with it, and the
+  /// platform's line is the snapshot on the row rather than today's setting.
+  ///
+  /// Falls back to the constants where a row predates migration 0011 and carries no
+  /// snapshot. That fallback is deliberate: those rows were priced with exactly
+  /// those numbers, so quoting them is more accurate than quoting zero, and a zero
+  /// would state that the platform waived its fee on a job it had already taken.
+  factory CostEstimate.ofRequest(InspectionRequest request) => CostEstimate(
+    centerFee: request.centerFee,
+    inspectorFee: request.inspectorNet ?? defaultInspectorFee,
+    platformFee: request.platformFee ?? defaultPlatformFee,
+  );
 
   /// The approved centre's fee, or null while it is still to be determined.
   final double? centerFee;
@@ -40,19 +62,55 @@ class CostEstimate {
   /// than a quote.
   bool get isCenterFeePending => centerFee == null;
 
-  /// The running total. While the centre fee is pending this is the part the
-  /// buyer owes regardless, which is why the create screen labels it "the current
-  /// estimated total".
+  /// The running total.
+  ///
+  /// While the centre fee is pending this is the part the buyer owes regardless,
+  /// which is why the create screen labels it "the current estimated total".
   double get total => (centerFee ?? 0) + inspectorFee + platformFee;
 
   /// The estimate shown on the create screen, before any inspector is involved.
+  ///
+  /// Only for the create form, where there is no request to read a real figure
+  /// from. Everything that already has an inspection should use
+  /// [CostEstimate.ofRequest] instead, or it will be quoting the design's
+  /// placeholders for a job priced against a real commission.
   static const CostEstimate standard = CostEstimate();
 
-  /// Placeholder fees, in SAR. NOT a price list. Replace with a real source
-  /// before launch; see the class doc for why these are display values rather
-  /// than stored ones. They live here so that no screen hard-codes a number.
+  /// Placeholder fees, in SAR. NOT a price list.
+  ///
+  /// The platform's figure is superseded by `platform_settings` in migration 0011
+  /// and these constants only describe rows filed before that. The inspector's
+  /// standing fee is superseded by the budget the buyer posts, so what an
+  /// inspector keeps is now an outcome rather than a rate.
+  ///
+  /// They survive because the create screen has no request yet — the commission is
+  /// read live from `platform_settings` there too, but the fallback when that read
+  /// fails is this number, and a screen that refuses to render without the network
+  /// is worse than one that shows a stale default.
   static const double defaultInspectorFee = 150;
   static const double defaultPlatformFee = 49;
+
+  /// The lowest budget a buyer may post.
+  ///
+  /// Enforced here as well as by the form so a caller that builds a draft
+  /// programmatically cannot produce a row the form would have refused. Set above
+  /// the platform's commission: below it, `budget - fee` goes negative, which
+  /// migration 0011 clamps to zero and which would mean an inspector working for
+  /// nothing.
+  static const double minBudget = 50;
+
+  /// The largest budget a buyer may post. A ceiling rather than a plausible
+  /// maximum: `numeric(12,2)` holds far more, and the point is to reject a typo
+  /// that would otherwise sit on the platform's books until someone noticed.
+  static const double maxBudget = 100000;
+
+  /// The budget the create form opens with, pre-filled and editable.
+  ///
+  /// The standing figure the design showed for a car inspection, which is the one
+  /// number a buyer who has no opinion about the price will want anyway. Pre-filled
+  /// rather than left blank because an empty box reads as "this service is free"
+  /// and because a buyer who must invent a number invents the wrong one.
+  static const double defaultBudget = 500;
 
   /// The estimate for a request whose centre has been chosen, used once an
   /// inspector names one.
@@ -117,6 +175,7 @@ class InspectionDraft {
     this.plateNumber = '',
     this.listingUrl = '',
     this.clientName = '',
+    this.budget = CostEstimate.defaultBudget,
     this.customCentre,
   });
 
@@ -143,6 +202,14 @@ class InspectionDraft {
   /// parties transacted under — see [InspectionRequest.clientName] for why it is
   /// a copy rather than a join.
   final String clientName;
+
+  /// The budget the buyer proposes, inclusive of the platform fee.
+  ///
+  /// The one number on this form that is the buyer's own decision. The database
+  /// takes it as given — `enforce_bidding` prices the commission off it — and
+  /// freezes it against them the moment an inspector claims the job, so a buyer
+  /// cannot raise their own budget after an inspector has looked at it.
+  final double budget;
 
   /// An unlisted centre the buyer would prefer, or null to leave the choice to the
   /// inspector.
@@ -179,13 +246,11 @@ class InspectionDraft {
     'car_year': year!,
     'seller_phone': sellerPhone.trim(),
     'city': city.trim(),
-    // The column is NOT NULL, and the design has replaced the buyer's typed
-    // budget with a fixed structure: the inspector's fee and the platform's are
-    // known now, and the centre's arrives later. So the row records the estimate
-    // the buyer was shown and accepted on the form — which is a fact about what
-    // they agreed to, not a number they chose. It is deliberately *not* summed
-    // with anything: the buyer's ceiling is the whole total, not a fourth line.
-    'price': CostEstimate.standard.total,
+    // The budget the buyer proposed. The design used to replace this with a fixed
+    // structure; migration 0011 gives the column back its original meaning, and the
+    // platform's cut of it is computed by `enforce_bidding` rather than by this
+    // map — so the client cannot pick its own commission even by accident.
+    'price': budget,
 
     // Everything below is omitted rather than sent empty. `seller_location_
     // address` carries a `char_length between 3 and 400` check, so an empty
@@ -223,6 +288,7 @@ class InspectionDraft {
     String? plateNumber,
     String? listingUrl,
     String? clientName,
+    double? budget,
     CustomCentre? customCentre,
   }) => InspectionDraft(
     carMake: carMake ?? this.carMake,
@@ -236,6 +302,7 @@ class InspectionDraft {
     plateNumber: plateNumber ?? this.plateNumber,
     listingUrl: listingUrl ?? this.listingUrl,
     clientName: clientName ?? this.clientName,
+    budget: budget ?? this.budget,
     customCentre: customCentre ?? this.customCentre,
   );
 }

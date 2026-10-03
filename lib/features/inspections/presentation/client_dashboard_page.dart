@@ -628,13 +628,23 @@ class _Invoice extends ConsumerWidget {
     final bool approved = request.clientApprovedAt != null;
     final double? centreFee = request.centerFee;
 
-    // With a centre named, the estimate is a quote and the total includes it.
-    // Without one the centre line says so rather than showing a zero, which would
-    // read as "free".
+    // The buyer's real figures, not the platform's standing estimate.
+    //
+    // `inspector_net` and `platform_fee` are written when the job is claimed and
+    // rewritten when an offer is accepted, so this box is the invoice for the
+    // transaction that happened rather than the design's placeholder pair. Falling
+    // back to the budget is deliberate and covers the pre-claim case: before anyone
+    // has claimed the job there is no net to record, and showing zeroes beside a real
+    // budget would say the platform is giving the job away.
+    final double net = request.inspectorNet ?? request.price;
+    final double fee = request.platformFee ?? 0;
+    // The centre's fee is a pass-through on top of the budget, not part of it —
+    // `enforce_bidding` never folds it into `agreed_total`, because charging the
+    // commission on money the platform never collected would be charging the
+    // inspector for somebody else's fee. So the invoice adds it here, once, in the
+    // one place that is allowed to do arithmetic on an invoice.
     final double total =
-        (centreFee ?? 0) +
-        CostEstimate.defaultInspectorFee +
-        CostEstimate.defaultPlatformFee;
+        (request.agreedTotal ?? request.price) + (centreFee ?? 0);
 
     return InvoiceBox(
       child: Column(
@@ -667,11 +677,11 @@ class _Invoice extends ConsumerWidget {
           ),
           CostLine(
             label: l10n.invoiceInspectorFeeInvoice,
-            value: CostEstimate.format(CostEstimate.defaultInspectorFee),
+            value: CostEstimate.format(net),
           ),
           CostLine(
             label: l10n.invoicePlatformFeeInvoice,
-            value: CostEstimate.format(CostEstimate.defaultPlatformFee),
+            value: CostEstimate.format(fee),
             emphasise: true,
           ),
           const DashedDivider(indent: AppSpacing.sm),

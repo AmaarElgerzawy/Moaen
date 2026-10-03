@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/env.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/media/photo_picker.dart';
 import '../../core/theme/app_theme.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../shared/utils/validators.dart';
@@ -12,6 +14,7 @@ import '../auth/auth_repository.dart';
 import '../auth/user_profile.dart';
 import '../auth/user_role_localizations.dart';
 import '../cities/presentation/city_picker.dart';
+import '../inspections/presentation/widgets/design_widgets.dart';
 
 /// Sign in, or create an account.
 ///
@@ -42,6 +45,13 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   bool _obscurePassword = true;
   UserRole _role = UserRole.client;
 
+  /// The identity document chosen for this registration.
+  ///
+  /// Held in memory and passed to [AuthController.signUp] rather than uploaded
+  /// immediately, because the object cannot be filed until Supabase Auth has minted
+  /// the id — the repository does the upload itself straight after signup returns.
+  XFile? _idPhoto;
+
   @override
   void dispose() {
     _email.dispose();
@@ -51,18 +61,39 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     super.dispose();
   }
 
+  Future<void> _pickIdPhoto() async {
+    final PhotoPicker picker = ref.read(identityPhotoPickerProvider);
+    final XFile? file = await picker.pickFromGallery();
+    if (file == null || !mounted) return;
+    setState(() => _idPhoto = file);
+  }
+
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    // The create-account button is disabled while this is false, so reaching here
+    // without a photo means the state changed under a keyboard submission. Returning
+    // rather than signing up without a document is the point of the check: a
+    // `?.` fallback would let an inspector through with nothing for an admin to
+    // review, which is the exact gap the document exists to close.
+    // The create-account button is disabled while no photo is chosen, so reaching
+    // here without one means the state changed under a keyboard submission. Returning
+    // rather than signing up without a document is the point of the check: a `?.`
+    // fallback would let an inspector through with nothing for an admin to review,
+    // which is the exact gap the document exists to close.
+    final XFile? idPhoto = _idPhoto;
+
     AppLogger.instance.info(_registering ? 'submitting registration' : 'submitting sign-in');
 
     if (_registering) {
+      if (idPhoto == null) return;
       await ref.read(authControllerProvider.notifier).signUp(
         email: _email.text,
         password: _password.text,
         fullName: _fullName.text,
         role: _role,
+        idPhoto: idPhoto,
         phone: _phone.text,
         city: _role == UserRole.inspector ? _serviceCity : null,
       );
@@ -82,6 +113,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   void _toggleMode() {
     setState(() {
       _registering = !_registering;
+      // The whole form resets, so the document does too. Keeping it would mean
+      // signing up in a different mode with a picture picked for the previous one,
+      // which is the kind of small wrongness that is impossible to notice later.
+      _idPhoto = null;
       _formKey.currentState?.reset();
     });
   }
@@ -190,6 +225,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                         ),
                       ],
                       const SizedBox(height: AppSpacing.lg),
+                      _IdPhotoField(
+                        photo: _idPhoto,
+                        onPick: _pickIdPhoto,
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
                     ],
 
                     TextFormField(
@@ -243,7 +283,13 @@ class _SignInPageState extends ConsumerState<SignInPage> {
 
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton(
-                      onPressed: busy ? null : _submit,
+                      // Disabled until a document is chosen. The requirement is the
+                      // point of the field above, and an account with no document is
+                      // one an admin's queue cannot act on — so the button refuses
+                      // rather than explaining afterwards.
+                      onPressed: busy || (_registering && _idPhoto == null)
+                          ? null
+                          : _submit,
                       child: busy
                           ? const SizedBox.square(
                               dimension: 20,
@@ -270,6 +316,67 @@ class _SignInPageState extends ConsumerState<SignInPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The identity-document control in the registration form.
+///
+/// A [NoticeBox] rather than a [TextFormField] because there is nothing to type: the
+/// only input is a picture, and the requirement is that it exists. The dashed border
+/// is the design's own "put something here" treatment, which is exactly the state
+/// this field is in until a photo is chosen.
+///
+/// Rendered for both roles, not only inspectors. A buyer uses the platform the
+/// moment they sign up, so an unverified buyer is working and an inspector is not —
+/// but the *document* is wanted from both, and a control that appears only for one
+/// role would make the document look optional to the other.
+class _IdPhotoField extends StatelessWidget {
+  const _IdPhotoField({required this.photo, required this.onPick});
+
+  final XFile? photo;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final bool chosen = photo != null;
+
+    return NoticeBox(
+      title: l10n.accessDocumentsTitle,
+      titleIcon: Icons.badge_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(l10n.accessDocumentsBody, style: AppText.secondary(13)),
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton.icon(
+            onPressed: onPick,
+            icon: Icon(
+              chosen ? Icons.check_circle_outline : Icons.upload_file,
+              size: 18,
+            ),
+            label: Text(l10n.actionUploadId),
+          ),
+          if (chosen) ...<Widget>[
+            const SizedBox(height: AppSpacing.sm),
+            // The button's own label is deliberately unchanged when a photo is
+            // chosen: relabelling it to something like "replace" would read as a
+            // different action, and the file name is worse still — an Arabic user
+            // gets `IMG_0042.jpg` with no indication of what it is. A confirmed
+            // line under the control says the one thing that matters: the platform
+            // has the document.
+            Text(
+              l10n.adminDocumentOnFile,
+              style: AppText.secondary(
+                12,
+                color: AppColors.green,
+                weight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

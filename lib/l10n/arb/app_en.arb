@@ -38,6 +38,8 @@
   "actionShowPassword": "Show password",
   "actionHidePassword": "Hide password",
   "actionRetry": "Try again",
+  "actionCancel": "Cancel",
+  "actionSave": "Save",
 
   "linkAlreadyRegistered": "Already have an account? Sign in",
   "linkRegisterPrompt": "New to {appName}? Create an account",
@@ -80,8 +82,7 @@
   "dashboardNoActiveBody": "Book an inspection before you travel to buy a car. A local inspector checks it and sends you a report.",
   "dashboardNewRequest": "Request an inspection",
 
-  "costTitle": "Cost estimate",
-  "costEstimateNotice": "This is an estimate. The final price is agreed with the inspector before the inspection starts.",
+  "costEstimateNotice": "The platform fee is Moaen's, and the centre's fee is set when the inspector books. The rest is the inspector's.",
 
   "createTitle": "New inspection request",
   "createSubmit": "Send request",
@@ -566,5 +567,226 @@
   "stepCoordinationPending": "Waiting for the inspector to choose a centre",
   "stepAppointmentPending": "Set once the inspector confirms and you approve",
   "invoiceApproved": "✅ You approved the offer and the invoice",
-  "reportCertified": "Certified"
+  "reportCertified": "Certified",
+
+  "accessBlockedTitle": "Account suspended",
+  "accessBlockedBody": "This account has been suspended, so you cannot use the app at the moment. If you think this is a mistake, contact support.",
+  "accessAwaitingApprovalTitle": "Awaiting verification",
+  "accessAwaitingApprovalBody": "We are checking your documents. You will be able to take jobs as soon as your account is approved.",
+  "accessRejectedTitle": "Account not approved",
+  "accessRejectedBody": "Your account was not approved: {reason}",
+  "@accessRejectedBody": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+  "accessDocumentsTitle": "Add your ID",
+  "accessDocumentsBody": "Upload a photo of your ID or residence card. You need it before your account can be verified.",
+  "actionUploadId": "Upload ID photo",
+  "actionRetryUpload": "Try again",
+
+  "adminTitle": "Admin",
+  "adminTabVerification": "Verification",
+  "adminTabAccounts": "Accounts",
+  "adminTabFinance": "Finance",
+  "adminTabOrders": "Orders",
+  "adminTabSettings": "Settings",
+
+  "adminQueueEmpty": "No inspectors are waiting for review.",
+  "adminDocumentOnFile": "ID photo on file",
+  "adminNoDocument": "No ID photo on file",
+  "adminApprove": "Approve",
+  "adminReject": "Reject",
+  "adminApproveConfirm": "Approve {name}?",
+  "@adminApproveConfirm": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "adminApproveNotify": "They will be emailed once approved.",
+  "adminRejectPrompt": "Why are you rejecting this inspector?",
+  "adminBadgePending": "Pending",
+  "adminBadgeVerified": "Verified",
+  "adminBadgeRejected": "Not approved",
+  "adminBadgeSuspended": "Suspended",
+  "adminVerifiedOn": "Verified {date}",
+  "@adminVerifiedOn": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "adminNotificationsPending": "{count, plural, =0{All notifications sent} =1{1 notification not sent yet} other{{count} notifications not sent yet}}",
+  "@adminNotificationsPending": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "adminAccountsEmpty": "No accounts match.",
+  "adminSearchAccounts": "Search by name or email",
+  "adminSuspend": "Suspend",
+  "adminRestore": "Restore",
+  "adminSuspendConfirm": "Suspend {name}?",
+  "@adminSuspendConfirm": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "adminSuspendNotify": "They will not be able to use the app until this is reversed. Jobs they already hold are not cancelled.",
+  "adminSuspendReasonPrompt": "Reason for the suspension (optional)",
+  "adminCentresTitle": "Repair centres",
+  "adminCentresEmpty": "No centres are listed.",
+  "adminCentreSuspendNotify": "The centre drops out of the booking list. Bookings already made are not cancelled.",
+
+  "adminFinanceEmpty": "No payments have been settled yet.",
+  "adminRevenue": "Platform revenue",
+  "adminCollected": "Collected payments",
+  "adminEscrow": "Held in escrow",
+  "adminRefunded": "Refunded",
+  "adminPaymentsCount": "{count, plural, =0{No payments} =1{1 payment} other{{count} payments}}",
+  "@adminPaymentsCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "adminTakeRate": "{percent} of what was collected",
+  "@adminTakeRate": {
+    "placeholders": {
+      "percent": { "type": "String" }
+    }
+  },
+
+  "adminOrdersEmpty": "No orders match these filters.",
+  "adminOrdersTruncated": "Showing the most recent {count} orders.",
+  "@adminOrdersTruncated": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "adminFilterStatus": "Status",
+  "adminFilterCity": "City",
+  "adminFilterSearch": "Reference, car or buyer",
+  "adminFilterMinValue": "Minimum total",
+  "adminFilterFrom": "From",
+  "adminFilterTo": "To",
+  "adminFilterClear": "Clear filters",
+  "adminFilterCount": "{count, plural, =1{1 filter} other{{count} filters}}",
+  "@adminFilterCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "adminCancelOrder": "Cancel this order",
+  "adminCancelConfirm": "Cancel order {reference}?",
+  "@adminCancelConfirm": {
+    "placeholders": {
+      "reference": { "type": "String" }
+    }
+  },
+  "adminCancelNotify": "Both parties will see it as cancelled, and this cannot be undone.",
+  "adminSummaryRow": "{orders} orders · {value}",
+  "@adminSummaryRow": {
+    "placeholders": {
+      "orders": { "type": "int" },
+      "value": { "type": "String" }
+    }
+  },
+
+  "adminCommissionTitle": "Platform commission",
+  "adminCommissionFixed": "Fixed amount",
+  "adminCommissionPercent": "Percentage",
+  "adminCommissionValue": "Commission",
+  "adminCommissionHint": "Applies to requests created from now on. Every existing request keeps the commission it was priced with.",
+  "adminCommissionSaved": "Saved.",
+  "adminCommissionErrorRange": "That value is out of range.",
+  "adminCommissionExample": "On a {budget} SAR request",
+  "@adminCommissionExample": {
+  "placeholders": {
+    "budget": { "type": "String" }
+}
+},
+  "adminCommissionFee": "Platform fee",
+  "adminCommissionInspector": "The inspector keeps",
+  "adminCommissionTotal": "The buyer pays",
+
+  "fieldBudget": "Your budget",
+  "fieldBudgetHint": "What you propose to pay, including the platform fee.",
+  "budgetBreakdownTitle": "What this covers",
+  "budgetPlatformFee": "Platform fee",
+  "budgetInspectorShare": "The inspector keeps",
+  "budgetYourTotal": "You pay",
+  "budgetNotANumber": "Enter a number.",
+  "budgetTooLow": "Enter at least {min} SAR.",
+  "@budgetTooLow": {
+    "placeholders": {
+      "min": { "type": "String" }
+    }
+  },
+  "budgetTooHigh": "Enter no more than {max} SAR.",
+  "@budgetTooHigh": {
+    "placeholders": {
+      "max": { "type": "String" }
+    }
+  },
+
+  "bidStatusPending": "Offer awaiting an answer",
+  "bidStatusAgreed": "Agreed",
+  "bidStatusDeclined": "Offer declined",
+  "bidYourEarnings": "Your share of the budget",
+  "bidMakeOffer": "Offer a different amount",
+  "bidOfferTitle": "Your offer",
+  "bidOfferNet": "You receive",
+  "bidOfferTotal": "The buyer pays",
+  "fieldNetBid": "Your earnings",
+  "fieldNetBidHint": "The buyer's total is this amount plus the platform fee.",
+  "fieldBidNote": "Note for the buyer (optional)",
+  "bidSameAsBudget": "The same as the buyer's budget",
+  "bidRound": "Offer {round}",
+  "@bidRound": {
+    "placeholders": {
+      "round": { "type": "int" }
+    }
+  },
+  "actionSubmitOffer": "Send offer",
+  "bidAcceptOffer": "Accept",
+  "bidKeepOffer": "Keep my budget",
+  "bidAcceptedNotice": "Agreed at {total}.",
+  "@bidAcceptedNotice": {
+    "placeholders": {
+      "total": { "type": "String" }
+    }
+  },
+  "bidDeclinedNotice": "You declined the offer.",
+  "bidBuyerPrompt": "The inspector asked for {total} instead of {budget}.",
+  "@bidBuyerPrompt": {
+    "placeholders": {
+      "total": { "type": "String" },
+      "budget": { "type": "String" }
+    }
+  },
+  "bidBuyerReason": "Reason (optional)",
+  "bidBuyerReasonHint": "The inspector sees this with their next offer.",
+  "bidPreviousReason": "Your reason for declining: {reason}",
+  "@bidPreviousReason": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+  "bidErrorNoOffer": "That offer is no longer open.",
+  "bidErrorNotYours": "You cannot change these amounts.",
+  "bidErrorClosed": "This inspection is finished.",
+  "bidErrorAmountRange": "Enter an amount between 1 and {max} SAR.",
+  "@bidErrorAmountRange": {
+    "placeholders": {
+      "max": { "type": "String" }
+    }
+  },
+  "bidErrorGeneric": "Could not send your answer. Please try again.",
+  "bidErrorSubmit": "Could not submit the offer. Please try again.",
+  "bidErrorAlreadyClaimed": "Claim the job before making an offer.",
+  "bidErrorNotAssigned": "This job belongs to another inspector.",
+
+  "adminErrorNotPermitted": "You are not allowed to do that.",
+  "adminErrorNotAnAdmin": "Only an administrator can do that.",
+  "adminErrorNoDocument": "This account has no ID photo on file."
 }

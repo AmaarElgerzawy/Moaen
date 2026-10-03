@@ -1,6 +1,6 @@
 import 'package:image_picker/image_picker.dart';
 import 'package:moaen/features/inspections/data/media_repository.dart';
-import 'package:moaen/features/inspections/data/photo_picker.dart';
+import 'package:moaen/core/media/photo_picker.dart';
 import 'package:moaen/features/inspections/data/report_repository.dart';
 import 'package:moaen/features/inspections/domain/inspection_report.dart';
 import 'package:moaen/features/inspections/domain/inspection_request.dart';

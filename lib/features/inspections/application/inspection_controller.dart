@@ -3,13 +3,15 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../auth/auth_controller.dart';
 import '../../auth/user_profile.dart';
+import '../../../core/media/photo_picker.dart';
+import '../data/bid_repository.dart';
 import '../data/centre_repository.dart';
 import '../data/inspection_repository.dart';
 import '../data/location_surface.dart';
 import '../data/media_repository.dart';
-import '../data/photo_picker.dart';
 import '../data/report_repository.dart';
 import '../domain/custom_centre.dart';
+import '../domain/inspection_bid.dart';
 import '../domain/inspection_centre.dart';
 import '../domain/inspection_draft.dart';
 import '../domain/inspection_report.dart';
@@ -304,6 +306,113 @@ final inspectionRequestControllerProvider =
     NotifierProvider<InspectionRequestController, AsyncValue<void>>(
       InspectionRequestController.new,
     );
+
+// ---------------------------------------------------------------------------
+// Bidding
+// ---------------------------------------------------------------------------
+
+final bidRepositoryProvider = Provider<BidRepository>(
+  (Ref ref) => BidRepository(ref.watch(supabaseClientProvider)),
+);
+
+/// The offers on one inspection, newest round first.
+///
+/// A family over the inspection id rather than a field on
+/// [inspectorJobProvider], because the two sides of a negotiation need different
+/// amounts of this and must not compute it differently: the buyer's screen reads the
+/// open offer out of it to decide whether to draw an accept/refuse card, and the
+/// inspector's offer sheet reads the *last* offer to pre-fill the next one. Folding
+/// them into the request provider would mean every job-board row fetching the whole
+/// offer history, which is a request nobody there needs.
+///
+/// Watches [authControllerProvider] for the sign-out reason [myRequestsProvider] does.
+final inspectionOffersProvider =
+    FutureProvider.family<List<InspectionBid>, String>((Ref ref, String id) {
+      ref.watch(authControllerProvider);
+      return ref.watch(bidRepositoryProvider).listForInspection(id);
+    });
+
+/// The two bidding writes: an inspector's counter-offer and a buyer's answer.
+///
+/// Its own notifier rather than methods on [InspectionRequestController] for the
+/// reason the reads above are separate providers: the counter-offer sheet is open on
+/// top of a job the inspector is reading, and putting that write's loading state in
+/// the shared request controller would spin the job page underneath the sheet and
+/// blank the numbers the inspector is about to change.
+///
+/// Invalidates the offers list *and* the inspection row, because both changed: the
+/// offer itself, and — on the buyer's side — the `agreed_total`, `inspector_net` and
+/// `bid_status` the database copies off the offer. Neither screen can be right from
+/// the other's copy alone.
+class BidController extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  /// Offers [netAmount] on [inspectionId], returning the sealed offer.
+  ///
+  /// A net, never a total, for the reason [BidRepository.submit] takes one: the
+  /// commission is the platform's business and an inspector who can see and set it
+  /// will argue about it instead of doing the work.
+  Future<InspectionBid> submit({
+    required String inspectionId,
+    required double netAmount,
+    String note = '',
+  }) async {
+    state = const AsyncLoading();
+    try {
+      final InspectionBid offer = await ref
+          .read(bidRepositoryProvider)
+          .submit(
+            inspectionId: inspectionId,
+            netAmount: netAmount,
+            note: note,
+          );
+      state = const AsyncData(null);
+      _invalidate(inspectionId);
+      return offer;
+    } on Object catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Answers the open offer on [inspectionId].
+  ///
+  /// [accept] writes one word and nothing else. The amounts come off the offer the
+  /// `enforce_bidding` trigger can see, not off the client, so a buyer cannot accept
+  /// at a total they invented — and cannot write the flag without the offer either.
+  Future<void> respond({
+    required String inspectionId,
+    required bool accept,
+    String note = '',
+  }) async {
+    state = const AsyncLoading();
+    try {
+      await ref
+          .read(inspectionRepositoryProvider)
+          .respondToBid(
+            inspectionId,
+            accept: accept,
+            counterNote: note,
+          );
+      state = const AsyncData(null);
+      _invalidate(inspectionId);
+      ref.invalidate(dashboardRequestProvider);
+      ref.invalidate(myRequestsProvider);
+    } on Object catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  void _invalidate(String inspectionId) {
+    ref.invalidate(inspectionOffersProvider(inspectionId));
+    ref.invalidate(inspectorJobProvider(inspectionId));
+  }
+}
+
+final bidControllerProvider =
+    NotifierProvider<BidController, AsyncValue<void>>(BidController.new);
 
 // ---------------------------------------------------------------------------
 // Centres

@@ -246,10 +246,15 @@ void main() {
       expect(row['seller_phone'], '+201000000001');
       expect(row['seller_location_address'], '12 Nile Street');
       expect(row['city'], 'Dammam');
-      // The estimate the buyer was shown and agreed to on the form, not a figure
-      // they chose: the design removed the budget input and this column is NOT
-      // NULL, so it records what the buyer accepted rather than what they wanted.
-      expect(row['price'], 199.0);
+      // The buyer's own proposal, now collected by the form: `price` is what the
+      // buyer offered to pay, and every figure downstream of it — the commission,
+      // the inspector's share, the agreed total — is derived from it by the trigger.
+      // Asserting the *default* rather than a hand-picked number, because the point
+      // is that `toRow` carries [InspectionDraft.budget] through unchanged; a test
+      // that hard-coded 500 here would still pass if the column went back to being
+      // a platform estimate that happened to match.
+      expect(row['price'], complete.budget);
+      expect(row['price'], isNot(CostEstimate.standard.total));
       expect(row['client_notes'], 'Seller is impatient.');
     });
 

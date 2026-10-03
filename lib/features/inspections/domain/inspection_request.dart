@@ -1,4 +1,5 @@
 import 'custom_centre.dart';
+import 'inspection_bid.dart';
 
 /// The lifecycle of a request, mirroring the `inspection_status` enum.
 ///
@@ -41,6 +42,25 @@ enum InspectionStatus {
     InspectionStatus.inProgress => true,
     InspectionStatus.completed || InspectionStatus.cancelled => false,
   };
+
+  /// True once an inspector holds the job and before it is closed.
+  ///
+  /// The negotiation window, and narrower than [isOpen] on purpose. `pending` is open
+  /// work but belongs to nobody — an inspector countering a job that is still on the
+  /// board would be pricing a job another inspector is about to claim, and
+  /// `seal_bid` refuses it. `cancelled` is closed. What is left is exactly the two
+  /// statuses where an inspector named on the row can change the price, which is what
+  /// this is for.
+  ///
+  /// Deliberately not `isOpen && !isPending`: stated positively so a fifth status
+  /// added to the enum has to answer this question instead of inheriting an answer
+  /// from a pair of negations that happens to be true.
+  bool get isClaimed => switch (this) {
+    InspectionStatus.accepted || InspectionStatus.inProgress => true,
+    InspectionStatus.pending ||
+    InspectionStatus.completed ||
+    InspectionStatus.cancelled => false,
+  };
 }
 
 /// A row of `public.car_inspections` — one request for one car.
@@ -82,6 +102,12 @@ class InspectionRequest {
     this.centerFee,
     this.clientApprovedAt,
     this.customCentre,
+    this.platformFee,
+    this.inspectorNet,
+    this.agreedTotal,
+    this.bidStatus = BidStatus.none,
+    this.agreedAt,
+    this.counterNote,
   });
 
   final String id;
@@ -159,14 +185,45 @@ class InspectionRequest {
   final String? inspectionCenterName;
   final InspectionStatus status;
 
-  /// The cost structure the buyer approved when they submitted the request.
+  /// The budget the buyer proposed, inclusive of the platform fee.
   ///
-  /// It used to be a budget the buyer typed. The design has no budget input: the
-  /// fees are fixed (the inspector's 150, the platform's 49) and the centre's
-  /// fee arrives later, chosen by the inspector. What the column now holds is
-  /// therefore the estimate the buyer was shown and accepted — not a number they
-  /// chose, and not a charge. See `InspectionDraft.toRow`.
+  /// It used to be a figure this codebase computed and the buyer was shown — a
+  /// fixed estimate with no input on the form. Migration 0011 gives the column
+  /// back its original meaning: it is what the buyer asked to pay, and it is
+  /// frozen against them the moment an inspector claims the job, by migration
+  /// 0009's rule 2. What the platform's cut of it is, see [platformFee].
   final double price;
+
+  /// The platform's commission on this request, copied from
+  /// `platform_settings` when the request was created.
+  ///
+  /// Nullable because a request filed before migration 0011 has no snapshot.
+  /// Read as "not recorded" rather than zero: a zero here would state that the
+  /// platform waived its fee on a job it had already priced.
+  final double? platformFee;
+
+  /// What the inspector keeps, once the job is claimed.
+  ///
+  /// Never written by a client — `enforce_bidding` derives it from the budget and
+  /// the snapshot, or copies it off an accepted counter-offer. Null until then,
+  /// which is what lets the inspector's card show the *offered* earnings rather
+  /// than a zero that would read as a commission of the entire budget.
+  final double? inspectorNet;
+
+  /// What the buyer pays. Stored rather than derived from [price], because the
+  /// invoice is a fact about a transaction rather than a recomputation against a
+  /// commission setting that may since have moved.
+  final double? agreedTotal;
+
+  /// Where the negotiation has got to. See [BidStatus].
+  final BidStatus bidStatus;
+
+  /// When the two sides settled, or when the buyer last refused an offer.
+  final DateTime? agreedAt;
+
+  /// The buyer's one line on why they refused, handed back to the inspector on the
+  /// next offer form so the second round is not a blind guess.
+  final String? counterNote;
 
   /// The approved centre's own fee, set from `inspection_centres.fee` when the
   /// inspector books it. Null until then, which is what lets the buyer's invoice
@@ -215,6 +272,26 @@ class InspectionRequest {
   /// True while the request has not been picked up.
   bool get isAwaitingInspector => status == InspectionStatus.pending;
 
+  /// True once an inspector is holding the job, whatever the negotiation says.
+  ///
+  /// The boundary the bidding rules turn on: an offer is only possible after this,
+  /// because before it there is nobody to send one to.
+  bool get isClaimed => inspectorId != null;
+
+  /// True while a counter-offer is waiting on the buyer.
+  bool get isAwaitingBuyerResponse => bidStatus == BidStatus.pending;
+
+  /// True when the terms could still change, which is when the screens show a
+  /// negotiation control at all.
+  ///
+  /// Excludes `completed` and `cancelled` because those are terminal: migration
+  /// 0011's `seal_bid` refuses an offer on a closed inspection, so offering a
+  /// button that the database will reject is a worse bug than hiding it.
+  bool get isNegotiable =>
+      !isAwaitingInspector &&
+      status != InspectionStatus.completed &&
+      status != InspectionStatus.cancelled;
+
   factory InspectionRequest.fromRow(Map<String, dynamic> row) {
     return InspectionRequest(
       id: row['id'] as String,
@@ -240,6 +317,12 @@ class InspectionRequest {
       inspectionCenterName: row['inspection_center_name'] as String?,
       status: InspectionStatus.fromName(row['status'] as String? ?? 'pending'),
       price: _asDouble(row['price']),
+      platformFee: row['platform_fee'] == null ? null : _asDouble(row['platform_fee']),
+      inspectorNet: row['inspector_net'] == null ? null : _asDouble(row['inspector_net']),
+      agreedTotal: row['agreed_total'] == null ? null : _asDouble(row['agreed_total']),
+      bidStatus: BidStatus.fromName(row['bid_status'] as String?),
+      agreedAt: _asDate(row['agreed_at']),
+      counterNote: row['counter_note'] as String?,
       centerFee: row['center_fee'] == null ? null : _asDouble(row['center_fee']),
       appointmentAt: _asDate(row['appointment_at']),
       clientApprovedAt: _asDate(row['client_approved_at']),
@@ -297,6 +380,12 @@ class InspectionRequest {
     String? inspectionCenterName,
     InspectionStatus? status,
     double? price,
+    double? platformFee,
+    double? inspectorNet,
+    double? agreedTotal,
+    BidStatus? bidStatus,
+    DateTime? agreedAt,
+    String? counterNote,
     double? centerFee,
     DateTime? appointmentAt,
     DateTime? clientApprovedAt,
@@ -325,6 +414,12 @@ class InspectionRequest {
     inspectionCenterName: inspectionCenterName ?? this.inspectionCenterName,
     status: status ?? this.status,
     price: price ?? this.price,
+    platformFee: platformFee ?? this.platformFee,
+    inspectorNet: inspectorNet ?? this.inspectorNet,
+    agreedTotal: agreedTotal ?? this.agreedTotal,
+    bidStatus: bidStatus ?? this.bidStatus,
+    agreedAt: agreedAt ?? this.agreedAt,
+    counterNote: counterNote ?? this.counterNote,
     centerFee: centerFee ?? this.centerFee,
     appointmentAt: appointmentAt ?? this.appointmentAt,
     clientApprovedAt: clientApprovedAt ?? this.clientApprovedAt,

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:moaen/app.dart';
 import 'package:moaen/core/env.dart';
 import 'package:moaen/core/localization/locale_provider.dart';
+import 'package:moaen/core/router/app_router.dart';
+import 'package:moaen/core/theme/app_theme.dart';
+import 'package:moaen/features/admin/presentation/admin_home_page.dart';
 import 'package:moaen/features/auth/auth_controller.dart';
 import 'package:moaen/features/auth/auth_repository.dart';
 import 'package:moaen/features/auth/sign_in_page.dart';
@@ -15,6 +19,7 @@ import 'package:moaen/features/inspections/presentation/client_dashboard_page.da
 import 'package:moaen/features/inspections/presentation/inspector_home_page.dart';
 import 'package:moaen/features/inspections/presentation/widgets/design_widgets.dart';
 import 'package:moaen/features/cities/application/city_controller.dart';
+import 'package:moaen/l10n/gen/app_localizations.dart';
 
 import '../../support/fake_cities.dart';
 import '../../support/test_client.dart';
@@ -69,16 +74,28 @@ class FakeAuthRepository extends AuthRepository {
   }
 }
 
+/// A profile for the routing tests.
+///
+/// Inspectors default to [approved] true because the access gate sends an
+/// unapproved one to `/restricted` before any role rule runs — which is the point of
+/// the gate, and is asserted in `access_restricted_test.dart`. A routing test that
+/// wanted to check "an inspector lands on the inspector home" would otherwise be
+/// testing the gate, and would keep passing if the *dispatch* broke and the gate
+/// quietly started letting everyone through.
 UserProfile _profile({
   UserRole role = UserRole.client,
   String? city,
   String name = 'Nadia Hassan',
+  bool approved = true,
+  bool blocked = false,
 }) => UserProfile(
   id: 'user-1',
   fullName: name,
   email: 'nadia@example.com',
   role: role,
   locationCity: city,
+  isApproved: approved,
+  isBlocked: blocked,
 );
 
 /// Renders the real [MoaenApp] in English.
@@ -119,6 +136,60 @@ Finder _navItem(String label) => find.descendant(
   of: find.byType(AppBottomNav),
   matching: find.text(label),
 );
+
+/// What [_pumpRouter] hands back, so a test can navigate the *real* router.
+class RouterHarness {
+  const RouterHarness(this.router);
+
+  final GoRouter router;
+}
+
+/// Mounts the app's real [routerProvider] over a fake session.
+///
+/// For the redirect rules that [MoaenApp] cannot reach on its own: they are about
+/// where a navigation is *refused*, so a test has to ask for a route and be turned
+/// away. Pumping the real provider rather than building a second router is the whole
+/// point — a copy of the redirect would be a copy of the rule, and a rule with two
+/// copies is a rule with two answers.
+Future<RouterHarness> _pumpRouter(
+  WidgetTester tester,
+  FakeAuthRepository repository,
+) async {
+  final ProviderContainer container = ProviderContainer(
+    overrides: [
+      authRepositoryProvider.overrideWithValue(repository),
+      localeProvider.overrideWithValue(const Locale('en')),
+      dashboardRequestProvider.overrideWith((Ref ref) async => null),
+      jobBoardProvider.overrideWith((Ref ref) async => const <InspectionRequest>[]),
+      myJobsProvider.overrideWith((Ref ref) async => const <InspectionRequest>[]),
+      citiesProvider.overrideWith((Ref ref) async => testCities),
+    ],
+  );
+  addTearDown(container.dispose);
+
+  late GoRouter router;
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: Consumer(
+        builder: (BuildContext context, WidgetRef ref, _) {
+          router = ref.watch(routerProvider);
+          return MaterialApp.router(
+            routerConfig: router,
+            theme: AppTheme.light(),
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+          );
+        },
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+
+  addTearDown(router.dispose);
+  return RouterHarness(router);
+}
 
 void main() {
   group('configuration', () {
@@ -292,6 +363,89 @@ void main() {
       // board by this column, so a wrong city is an empty board.
       expect(find.text('Inspector'), findsOneWidget);
       expect(find.text('Riyadh'), findsOneWidget);
+    });
+
+    testWidgets('an admin lands on the panel, not on either role home (O1)', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          FakeAuthRepository(
+            userId: 'admin-1',
+            profile: _profile(role: UserRole.admin, name: 'Khalid Admin'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdminHomePage), findsOneWidget);
+      expect(find.byType(RoleLandingPage), findsNothing);
+      expect(find.byType(InspectorHomePage), findsNothing);
+      expect(find.byType(ClientDashboardPage), findsNothing);
+    });
+
+    testWidgets('a buyer who asks for the panel is sent home instead', (
+      WidgetTester tester,
+    ) async {
+      // The gate has to be asserted for the role that *cannot* use the panel, not
+      // only for the one that can. Without it a client who had once been an admin —
+      // or who simply guessed the URL — lands on a screen of five empty tabs and a
+      // banner of permission errors, which is the exact outcome the gate exists to
+      // prevent.
+      //
+      // Driven through the real [routerProvider] rather than a router built here. A
+      // copy of the redirect in the test would be a second copy of the rule, and
+      // the failure this guards against is precisely the two copies drifting.
+      final RouterHarness harness = await _pumpRouter(
+        tester,
+        FakeAuthRepository(userId: 'user-1', profile: _profile()),
+      );
+
+      // The client has to have landed somewhere first: `go` on a router whose first
+      // build has not happened yet resolves against an empty configuration, and the
+      // assertion below would pass for the wrong reason.
+      expect(find.byType(ClientDashboardPage), findsOneWidget);
+
+      harness.router.go(AppRoutes.admin);
+      await tester.pumpAndSettle();
+
+      // Unreachable by construction — the point is that the navigation was
+      // refused, not that a panel rendered something.
+      expect(find.byType(AdminHomePage), findsNothing);
+      expect(
+        harness.router.routerDelegate.currentConfiguration.uri.path,
+        AppRoutes.dashboard,
+      );
+    });
+
+    testWidgets('a suspended inspector is kept off the board by the access gate', (
+      WidgetTester tester,
+    ) async {
+      // The gate runs *ahead* of the role dispatch, so a blocked inspector asking for
+      // their own home lands on the restricted screen rather than on a board the
+      // database is about to refuse to fill. Asserting the landing place and not just
+      // "not the board" is what pins the ordering: a gate that ran last would pass
+      // the weaker assertion and fail this one.
+      final RouterHarness harness = await _pumpRouter(
+        tester,
+        FakeAuthRepository(
+          userId: 'user-2',
+          profile: _profile(
+            role: UserRole.inspector,
+            city: 'Dammam',
+            blocked: true,
+          ),
+        ),
+      );
+
+      harness.router.go(AppRoutes.inspector);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InspectorHomePage), findsNothing);
+      expect(
+        harness.router.routerDelegate.currentConfiguration.uri.path,
+        AppRoutes.restricted,
+      );
     });
   });
 

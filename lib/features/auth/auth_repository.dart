@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/logging/app_logger.dart';
+import 'data/identity_repository.dart';
 import 'user_profile.dart';
 
 /// Why an authentication attempt was refused.
@@ -136,11 +138,29 @@ class AuthRepository {
   /// client|inspector, so passing `admin` here achieves nothing but a
   /// harmless no-op; the parameter is typed to the two assignable roles so the
   /// intent is visible at the call site.
+  ///
+  /// ## The identity document
+  ///
+  /// [idPhoto] is required — the business rule is that both roles upload an ID or
+  /// residence card at sign-up — but it is uploaded *after* the account exists,
+  /// because Supabase Auth mints the user id and there is nothing to file an object
+  /// under until `signUp` returns. See `IdentityRepository` for why that ordering is
+  /// the lesser of the two evils.
+  ///
+  /// What the caller gets back is the profile as the database has it. If the upload
+  /// or the column write fails, that is *not* an authentication failure and the
+  /// account is not rolled back — it exists, it is usable for a buyer, and for an
+  /// inspector it is inert because it is unapproved. The method therefore rethrows
+  /// as [AuthFailure] with [AuthFailureReason.profileUnavailable] only after
+  /// re-attempting the load, so a stale-but-real profile is never traded away for an
+  /// upload that did not land.
   Future<UserProfile> signUp({
     required String email,
     required String password,
     required String fullName,
     required UserRole role,
+    required XFile idPhoto,
+    IdentityRepository? identities,
     String? phone,
     String? city,
   }) async {
@@ -167,11 +187,68 @@ class AuthRepository {
       if (response.session == null) {
         throw const AuthFailure(AuthFailureReason.confirmationRequired);
       }
+
+      // The document is best effort, and the `try` around it is deliberate rather
+      // than a mistake about error handling.
+      //
+      // The account exists and the session is live by this point. Refusing the
+      // sign-up over a failed upload would sign the user straight back out of an
+      // account they legitimately created and leave them unable to fix anything —
+      // and rolling the account back is not available either, because Supabase Auth
+      // will not un-create it from here. So the failure is logged, the profile is
+      // returned, and the account lands on the screen that asks for the document
+      // again. `UserProfile.isAwaitingDocuments` is what that screen keys on, so
+      // nothing has to guess that this happened.
+      try {
+        await _attachIdPhoto(user.id, idPhoto, identities);
+      } on IdentityFailure catch (error, stackTrace) {
+        AppLogger.instance.error(
+          'sign-up left without an id photo',
+          error,
+          stackTrace,
+          {'user_id': user.id, 'role': role.name},
+        );
+      }
+
       return await loadProfile(user.id);
     } on AuthException catch (error, stackTrace) {
       _logAuthFailure('sign-up failed', error, stackTrace, email: email);
       throw AuthFailure(reasonFor(error), detail: error.message);
     }
+  }
+
+  /// Uploads [idPhoto] and points the profile at it, best effort.
+  ///
+  /// Split out so the failure path in [signUp] is one line and the ordering —
+  /// object first, column second — is stated once rather than implied by the order
+  /// of two statements in a `try`.
+  Future<void> _attachIdPhoto(
+    String userId,
+    XFile idPhoto,
+    IdentityRepository? identities,
+  ) async {
+    final IdentityRepository repository = identities ?? IdentityRepository(_client);
+    final String path = await repository.uploadIdPhoto(userId: userId, file: idPhoto);
+    await repository.setIdPhotoPath(userId, path);
+  }
+
+  /// Re-uploads an identity document for the signed-in account.
+  ///
+  /// Separate from [signUp] because the document can be missing long afterwards: an
+  /// upload that failed at sign-up, a document the user picked wrong, or an
+  /// inspector whose account was rejected and who is being asked to try again.
+  ///
+  /// Returns the refreshed profile, so the caller does not have to re-read a row it
+  /// already knows the id of — and, more importantly, so a screen that was showing
+  /// "awaiting documents" cannot keep showing it after a successful upload because
+  /// its cached profile was not replaced.
+  Future<UserProfile> updateIdPhoto(XFile idPhoto) async {
+    final String? userId = currentUserId;
+    if (userId == null) {
+      throw const AuthFailure(AuthFailureReason.profileUnavailable);
+    }
+    await _attachIdPhoto(userId, idPhoto, null);
+    return loadProfile(userId);
   }
 
   Future<void> signOut() async {

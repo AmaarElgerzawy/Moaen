@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/pricing/commission.dart';
+import '../../../core/pricing/commission_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../cities/application/city_controller.dart';
@@ -26,9 +28,13 @@ import 'widgets/location_picker.dart';
 /// Two design facts this screen has to hold on to, because both are easy to lose
 /// in a rewrite:
 ///
-///  * **There is no budget input.** The reference has three fixed fee lines and a
-///    total, and no field a buyer types a number into. The budget that used to
-///    live here has gone; [InspectionDraft.toRow] records the estimate instead.
+///  * **The budget is what the buyer types, and the three lines below it are that
+///    number broken down.** The reference had three fixed fee lines and a total with
+///    no field to change any of them; migration 0011 gave the buyer a budget and the
+///    platform a commission that can be a percentage, so a fixed total would now be a
+///    figure the database contradicts. [CostBox] keeps the design's three lines, the
+///    dashed rule and the `+ centre fee` suffix — it is fed the typed budget and the
+///    live commission instead of the design's placeholder figures.
 ///  * **The total line is a suffix, not a prefix.** The reference writes
 ///    `199 ر.س + رسوم المركز` — the figure, then the currency, then the words.
 ///    [CostEstimate.formatPrefixed] would print it the other way round.
@@ -56,6 +62,17 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
   final TextEditingController _sellerPhone = TextEditingController();
   final TextEditingController _notes = TextEditingController();
   final TextEditingController _centreName = TextEditingController();
+
+  /// The budget the buyer proposes.
+  ///
+  /// Seeded with [CostEstimate.defaultBudget] rather than left empty. A prefilled
+  /// field makes the page's first impression a price instead of a blank, and this one
+  /// is editable in a keystroke — whereas an empty field under a "you must fill this
+  /// in" rule makes a buyer who was happy with the platform's standing figure type out
+  /// the same number to find out what it was.
+  final TextEditingController _budget = TextEditingController(
+    text: CostEstimate.defaultBudget.toStringAsFixed(0),
+  );
 
   /// The chosen canonical city — a value, not a controller, because it comes from
   /// the [CityPicker] sheet rather than from a cursor. Null until the buyer makes
@@ -101,10 +118,33 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
       _sellerPhone,
       _notes,
       _centreName,
+      _budget,
     ]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// The typed budget, or null when it is not a number at all.
+  ///
+  /// Parsed from the controller rather than held as a double, for the same reason the
+  /// year field is a string: the text between two keystrokes is not a number, and
+  /// keeping the text and the parsed value in step would need a listener whose only
+  /// job is to disagree with the field the buyer is looking at.
+  double? get _budgetValue => double.tryParse(_budget.text.trim());
+
+  /// What the typed budget passes to the database.
+  ///
+  /// Falls back to [CostEstimate.defaultBudget] while the field is mid-edit, so the
+  /// cost box below keeps rendering a sensible split instead of an empty one on every
+  /// keystroke. The validator is what refuses an unfilled or out-of-range budget; this
+  /// is only so the card can be drawn at all.
+  double get _shownBudget {
+    final double? typed = _budgetValue;
+    if (typed == null) return CostEstimate.defaultBudget;
+    if (typed < CostEstimate.minBudget) return CostEstimate.minBudget;
+    if (typed > CostEstimate.maxBudget) return CostEstimate.maxBudget;
+    return typed;
   }
 
   InspectionDraft get _draft => InspectionDraft(
@@ -117,6 +157,7 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
     sellerPhone: _sellerPhone.text,
     city: _city ?? '',
     clientNotes: _notes.text,
+    budget: _budgetValue ?? CostEstimate.defaultBudget,
     customCentre: _customCentre,
   );
 
@@ -146,11 +187,15 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
 
   /// The three fixed fees, before any inspector is involved.
   ///
-  /// Not read from the selected city: there is one price list, so varying the
-  /// numbers by city would imply a pricing model the schema does not have.
-  /// [CostEstimate.standard] is the single source, which is what keeps the figure
-  /// on this screen and the figure on the buyer's invoice from drifting.
-  CostEstimate get _estimate => CostEstimate.standard;
+  /// Read from the live `platform_settings` row rather than from
+  /// [CostEstimate.standard], because the commission is an admin's to change and a
+  /// create form quoting 49 while the platform charges 10% would be a form that tells
+  /// the buyer the wrong price. The fallback is [Commission.defaultFixedValue], which
+  /// is also what the row is seeded with, so a failed read shows the platform's
+  /// standing figure rather than an empty card — and the number that actually lands on
+  /// the row is snapshotted by the database from the table, not from anything here.
+  Commission get _commission =>
+      ref.watch(commissionProvider).value ?? const Commission();
 
   Future<void> _submit() async {
     final bool formValid = _formKey.currentState?.validate() ?? false;
@@ -273,7 +318,12 @@ class _CreateRequestPageState extends ConsumerState<CreateRequestPage> {
                           ? l10n.customCentreBuyerIncomplete
                           : null,
                     ),
-                    _CostBox(estimate: _estimate),
+                    _CostBox(
+                      controller: _budget,
+                      budget: _shownBudget,
+                      commission: _commission,
+                      onBudgetChanged: () => setState(() {}),
+                    ),
                     const SizedBox(height: AppSpacing.lg),
                     FilledButton(
                       // Disabled while in flight, so a slow network cannot produce
@@ -807,10 +857,35 @@ class _CityAnchoredLocationField extends ConsumerWidget {
 /// platform. The order is not alphabetical and not by size — the centre is first
 /// because it is the line the buyer does not know yet, and reading a cost
 /// breakdown top-down wants the unknown first.
+/// The buyer's budget, and what that budget is made of.
+///
+/// The field and the box are one widget because the three lines below the field are a
+/// breakdown of the number above it. Splitting them would put two independently
+/// laid-out cards on the page where the reader has to hold one number in their head
+/// while their eye moves between them — and the whole point of showing the split is
+/// that the buyer should not have to.
 class _CostBox extends StatelessWidget {
-  const _CostBox({required this.estimate});
+  const _CostBox({
+    required this.controller,
+    required this.budget,
+    required this.commission,
+    required this.onBudgetChanged,
+  });
 
-  final CostEstimate estimate;
+  final TextEditingController controller;
+
+  /// The buyer's typed budget, already clamped by the page.
+  final double budget;
+
+  final Commission commission;
+
+  /// Rebuilds the page, so the three lines below re-read the field.
+  ///
+  /// A plain callback rather than a `ValueListenableBuilder` around the lines: the
+  /// page's `_shownBudget` already clamps the value and the page is going to rebuild
+  /// for its own reasons anyway, so a second listener here would be a second place
+  /// that has to agree about what "the current budget" means.
+  final VoidCallback onBudgetChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -826,7 +901,24 @@ class _CostBox extends StatelessWidget {
               l10n.createCostTitle,
               style: AppText.title(13, color: AppColors.greenDeep),
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: AppSpacing.md),
+            FieldLabel(l10n.fieldBudget),
+            DesignTextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
+              // Left-aligned and forced left-to-right even on the Arabic screen: the
+              // digits are Western throughout this app, and a number laid out against
+              // an RTL paragraph puts its units at the wrong end of itself.
+              ltr: true,
+              hintText: l10n.fieldBudgetHint,
+              // `TextFormField` under the hood, so this takes part in the page's
+              // `Form` and prints its own error — no hand-drawn one here, which is
+              // how the other five fields on this page behave.
+              validator: (String? value) => _validateBudget(context, value),
+              onChanged: (_) => onBudgetChanged(),
+            ),
+            const SizedBox(height: AppSpacing.md),
             CostLine(
               label: l10n.createCostCentre,
               value: l10n.invoiceCentrePending,
@@ -838,11 +930,11 @@ class _CostBox extends StatelessWidget {
             ),
             CostLine(
               label: l10n.invoiceInspectorFee,
-              value: CostEstimate.format(estimate.inspectorFee),
+              value: CostEstimate.format(commission.netFor(budget)),
             ),
             CostLine(
               label: l10n.invoicePlatformFee,
-              value: CostEstimate.format(estimate.platformFee),
+              value: CostEstimate.format(commission.feeFor(budget)),
             ),
             const DashedDivider(color: AppColors.successBorder),
             Row(
@@ -864,9 +956,7 @@ class _CostBox extends StatelessWidget {
                     // after the figure and then names the part that is not
                     // included. `CostEstimate.format` gives the first half;
                     // `formatPrefixed` would print `ر.س 199` and lose the clause.
-                    l10n.createCostTotalValue(
-                      CostEstimate.format(estimate.total),
-                    ),
+                    l10n.createCostTotalValue(CostEstimate.format(budget)),
                     textAlign: TextAlign.end,
                     style: AppText.title(12, color: AppColors.green),
                   ),
@@ -878,4 +968,31 @@ class _CostBox extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The budget field's three failure messages.
+///
+/// Distinct rather than one "invalid", because they are three different mistakes:
+/// something that is not a number at all, a number below the column's floor, and one
+/// above its ceiling. A buyer who typed `5000SAR` needs to be told to drop the
+/// letters; a buyer who typed `20` needs to be told there is a floor. Both used to
+/// get the same sentence, which was the card's only validation message.
+///
+/// The bounds are [CostEstimate]'s, the same constants the column's check constraint
+/// is built from — a range message that disagreed with the column would tell a buyer
+/// a limit the database does not have.
+String? _validateBudget(BuildContext context, String? raw) {
+  final AppLocalizations l10n = AppLocalizations.of(context);
+  final String trimmed = (raw ?? '').trim();
+  if (trimmed.isEmpty) return l10n.budgetNotANumber;
+
+  final double? amount = double.tryParse(trimmed);
+  if (amount == null) return l10n.budgetNotANumber;
+  if (amount < CostEstimate.minBudget) {
+    return l10n.budgetTooLow('${CostEstimate.minBudget.round()}');
+  }
+  if (amount > CostEstimate.maxBudget) {
+    return l10n.budgetTooHigh('${CostEstimate.maxBudget.round()}');
+  }
+  return null;
 }

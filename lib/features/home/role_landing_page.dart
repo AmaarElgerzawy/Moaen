@@ -8,11 +8,17 @@ import '../auth/auth_controller.dart';
 import '../auth/user_profile.dart';
 import '../auth/user_role_localizations.dart';
 
-/// The signed-in screen, chosen by role.
+/// The generic signed-in screen: who you are, and the sign-out button.
 ///
-/// Phase 1 stops here. The screen exists to prove the objective that a session
-/// resolves to the correct role-specific destination (O1) and to give the
-/// sign-out path something to exercise; the marketplace itself is Phase 2.
+/// Kept as the fallback destination for `/home` rather than deleted, because it is
+/// the one screen that answers "who does the app think I am" for a session that has
+/// no more specific destination — a profile whose role the build does not recognise,
+/// or a direct navigation to `/home` from outside the redirect. Every role the app
+/// *does* know is sent elsewhere by the redirect, so nothing routine reaches this.
+///
+/// It was Phase 1's proof that a session resolves to the right role (O1). That proof
+/// now lives in the redirect, which is where the rule has to be to be worth anything
+/// — but the screen still has a job, so it was not taken apart.
 class RoleLandingPage extends ConsumerWidget {
   const RoleLandingPage({super.key});
 

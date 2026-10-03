@@ -1965,6 +1965,7 @@ class DesignTextField extends StatelessWidget {
     this.maxLength,
     this.enabled = true,
     this.ltr = false,
+    this.onChanged,
     super.key,
   });
 
@@ -1993,6 +1994,17 @@ class DesignTextField extends StatelessWidget {
   /// an RTL paragraph and put the scheme at the wrong end.
   final bool ltr;
 
+  /// Fired on every keystroke.
+  ///
+  /// Here for the one case a [controller] cannot express on its own: a field whose
+  /// value is shown in *another* widget — the create form's budget, where the three
+  /// cost lines below the field are a breakdown of what is typed into it. That widget
+  /// has to be rebuilt, and a controller's listeners cannot rebuild a sibling.
+  ///
+  /// Optional, so every existing call site is unchanged and a field whose value is
+  /// only read on submit does not pay for a rebuild per character.
+  final ValueChanged<String>? onChanged;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -2000,6 +2012,7 @@ class DesignTextField extends StatelessWidget {
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       validator: validator,
+      onChanged: onChanged,
       textInputAction: textInputAction,
       maxLines: maxLines,
       minLines: maxLines,
